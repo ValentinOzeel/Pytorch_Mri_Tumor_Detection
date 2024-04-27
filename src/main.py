@@ -171,7 +171,36 @@ class LoadOurData():
         
         return self.train_dataloader, self.test_dataloader
     
+    
+    def show_random_images(self,
+                           str_dataset: str = 'train',
+                           n: int = 6,
+                           RANDOM_SEED = config['RANDOM_SEED']):
+        
+        if RANDOM_SEED: random.seed(RANDOM_SEED)
+        dataset = self.train_dataset if str_dataset.lower() == 'train' else self.test_dataset
+        # Get random indexes in the range 0 - length dataset
+        random_idxs = random.sample(range(len(dataset)), k=n)
+            
+        # Initiate plot
+        plt.figure(figsize=(20, 10))
+        
+        # Loop over indexes and plot corresponding image
+        for i, random_index in enumerate(random_idxs):
+            image, label = dataset[random_index]
+            
+            # Adjust tensor's dimensions for plotting : Color, Height, Width -> Height, Width, Color
+            image = image.permute(1, 2, 0)
+            # Set up subplot (number rows in subplot, number cols in subplot, index of subplot)
+            plt.subplot(1, n, i+1)
+            plt.imshow(image)
+            plt.axis(False)
+            plt.title(f"Class: {dataset.classes[label]}\n Shape: {image.shape}")
 
+        plt.tight_layout()
+        plt.show()
+        return
+            
     
 if __name__ == "__main__":
     
@@ -199,5 +228,5 @@ if __name__ == "__main__":
     #instance_our_dataset.print_info_on_loaded_data()
     
     # Print random transformed images
-    #instance_our_dataset.show_random_images()
+    instance_our_dataset.show_random_images()
     
