@@ -11,6 +11,10 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 
+from colorama import init, Fore, Back, Style
+init() # Initialize Colorama to work on Windows
+
+
 from secondary_module import read_yaml
 # Assuming data_exploration.py is in src\main.py
 project_root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -94,6 +98,21 @@ class LoadOurData():
         self.test_len = None
         self.test_classes = None
         self.test_class_to_idx = None
+
+    def count_per_class_train_and_test(self):
+        def count_samples_per_class(dataset: Dataset, train_or_test: str):        
+            # Initialize a defaultdict to count samples per class
+            if train_or_test not in ['train', 'test']: raise ValueError('train_or_test parameter should be "train" or "test".') 
+            classes = self.train_classes if train_or_test.lower() == 'train' else self.test_classes
+
+            samples_per_class = defaultdict(int)
+            # Iterate over all samples and count occurrences of each class  
+            for _, label in dataset:
+                img_class = classes[label]
+                samples_per_class[img_class] += 1
+            return samples_per_class
+        
+        return count_samples_per_class(self.train_dataset, 'train'), count_samples_per_class(self.test_dataset, 'test')
     
     def load_data(self, DatasetClass: Dataset):
         self.train_dataset = DatasetClass(root=self.train_dir,
@@ -108,13 +127,35 @@ class LoadOurData():
         self.train_len, self.test_len = len(self.train_dataset), len(self.test_dataset)
         self.train_classes, self.test_classes = self.train_dataset.classes, self.test_dataset.classes
         self.train_class_to_idx, self.test_class_to_idx = self.train_dataset.class_to_idx, self.test_dataset.class_to_idx
+        self.train_count_per_class, self.test_count_per_class = self.count_per_class_train_and_test()
         return self.train_dataset, self.test_dataset
         
     def load_using_ImageFolderDataset(self):
         return self.load_data(datasets.ImageFolder)
     
     def load_using_OurCustomDataset(self):
-        return self.load_data(OurCustomDataset)    
+        return self.load_data(OurCustomDataset)
+    
+    def color_print(self, to_print, color):
+        return f"{color + to_print + Style.RESET_ALL}"
+        
+    def print_info_on_loaded_data(self):
+        print(
+            self.color_print("---------- DATA INFO ----------", Fore.LIGHTGREEN_EX)
+        )
+        print(
+            self.color_print("OurCustomDataset (TRAIN dataset):", Fore.RED),
+            self.color_print("\nLength: ", Fore.BLUE), self.train_len,       
+            self.color_print("\nClasses/labels: ", Fore.BLUE), self.train_class_to_idx,   
+            self.color_print("\nImages per class: ", Fore.BLUE), self.train_count_per_class, '\n'
+            )
+        print(
+            self.color_print("OurCustomDataset (TEST dataset):", Fore.RED),
+            self.color_print("\nLength: ", Fore.BLUE), self.test_len,       
+            self.color_print("\nClasses/labels: ", Fore.BLUE), self.test_class_to_idx,   
+            self.color_print("\nImages per class: ", Fore.BLUE), self.test_count_per_class, '\n\n'
+            )    
+        
         
     def create_dataloaders(self, BATCH_SIZE=config['DATA_LOADER']['BATCH_SIZE'], train_shuffle=True, test_shuffle=False):
         
@@ -148,13 +189,15 @@ if __name__ == "__main__":
                                        test_dir,
                                        transform)
     instance_our_dataset.load_using_OurCustomDataset()
+    instance_our_dataset.print_info_on_loaded_data()
     
     ### ImageFolder dataset
     #instance_imagefolder = LoadOurData(train_dir,
     #                                   test_dir,
     #                                   transform)  
     #instance_imagefolder.load_using_ImageFolderDataset()
+    #instance_our_dataset.print_info_on_loaded_data()
     
     # Print random transformed images
-    instance_our_dataset.show_random_images()
+    #instance_our_dataset.show_random_images()
     
