@@ -1,8 +1,11 @@
 # Data transformation (into tensor and torch.utils.data.Dataset -> torch.utils.data.DataLoader)
 import os
+import random
+from collections import defaultdict
 from pathlib import Path
-from PIL import Image 
 from typing import Tuple, Dict, List
+from PIL import Image 
+import matplotlib.pyplot as plt
 
 import torch 
 from torch.utils.data import DataLoader, Dataset
@@ -41,6 +44,10 @@ class OurCustomDataset(Dataset):
     
     def load_image(self, index: int):
         return Image.open(self.all_img_paths_in_root[index])
+    
+    def convert_mode_L_to_RGB(self, image):
+        # Convert to RGB if the mode is not already RGB
+        return image.convert('RGB') if image.mode != 'RGB' else image
 
     def __len__(self) -> int:
         # Overwrite Dataset's __len__ method with the len of the list of all .jpg file found in root dir
@@ -49,10 +56,12 @@ class OurCustomDataset(Dataset):
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
         # Overwrite Dataset's __getitem__ method to return one data sample (data, label) potentially transformed
         image = self.load_image(index)
+        image = self.convert_mode_L_to_RGB(image)
         image_class = self.all_img_paths_in_root[index].parent.name
         class_label = self.class_to_idx[image_class]
         
         image = self.transform(image) if self.transform else image 
+
         class_label = self.target_transform(class_label) if self.target_transform else class_label
         return image, class_label
         
@@ -85,7 +94,7 @@ class LoadOurData():
         self.test_len = None
         self.test_classes = None
         self.test_class_to_idx = None
-        
+    
     def load_data(self, DatasetClass: Dataset):
         self.train_dataset = DatasetClass(root=self.train_dir,
                                        transform=self.transform,
@@ -105,9 +114,7 @@ class LoadOurData():
         return self.load_data(datasets.ImageFolder)
     
     def load_using_OurCustomDataset(self):
-        return self.load_data(OurCustomDataset)
-        
-        
+        return self.load_data(OurCustomDataset)    
         
     def create_dataloaders(self, BATCH_SIZE=config['DATA_LOADER']['BATCH_SIZE'], train_shuffle=True, test_shuffle=False):
         
@@ -123,38 +130,31 @@ class LoadOurData():
         
         return self.train_dataloader, self.test_dataloader
     
-    
-    
+
     
 if __name__ == "__main__":
     
     train_dir = os.path.join(project_root_path, 'data', 'train')
     test_dir = os.path.join(project_root_path, 'data', 'test')
-    transform = [
+    transform = transforms.Compose([
         transforms.Resize(size=(64, 64)),
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.ToTensor()
-    ]
+    ])
     
-    # 
+    # Compare our custom dataset loading VS ImageFolder loading
+    # Our custom dataset
     instance_our_dataset = LoadOurData(train_dir,
                                        test_dir,
                                        transform)
     instance_our_dataset.load_using_OurCustomDataset()
     
-    print(f"OurCustomDataset TRAIN:\nLength: {instance_our_dataset.train_len}, Classes/labels:{instance_our_dataset.train_class_to_idx}")
-    print(f"OurCustomDataset TEST:\nLength: {instance_our_dataset.test_len}, Classes/labels:{instance_our_dataset.test_class_to_idx}\n\n")
+    ### ImageFolder dataset
+    #instance_imagefolder = LoadOurData(train_dir,
+    #                                   test_dir,
+    #                                   transform)  
+    #instance_imagefolder.load_using_ImageFolderDataset()
     
-    
-    
-    instance_imagefolder = LoadOurData(train_dir,
-                                       test_dir,
-                                       transform)  
-    instance_imagefolder.load_using_ImageFolderDataset()
-
-    print(f"ImageFolderDataset TRAIN:\nLength: {instance_imagefolder.train_len}, Classes/labels:{instance_imagefolder.train_class_to_idx}")
-    print(f"ImageFolderDataset TEST:\nLength: {instance_imagefolder.test_len}, Classes/labels:{instance_imagefolder.test_class_to_idx}")
-    
-    
-    
+    # Print random transformed images
+    instance_our_dataset.show_random_images()
     

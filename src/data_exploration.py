@@ -102,7 +102,7 @@ class DataExploration():
         # Loop over images, classes and transformed images for plotting
         for i, (image, transformed_image, image_class) in enumerate(zip(images, transformed_images, image_classes)):
             
-            # Move color channel to the last dimension (Color, Height, Width to Height, Width, Color)
+            # Move color channel to the last dimension (Color, Height, Width -> Height, Width, Color)
             transformed_image = transformed_image.permute(1, 2, 0)
             
             # Original image
