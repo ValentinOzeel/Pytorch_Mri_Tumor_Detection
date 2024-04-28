@@ -139,6 +139,8 @@ if __name__ == "__main__":
     transform_steps = [
         transforms.Resize(size=(64, 64)),
         transforms.RandomHorizontalFlip(p=0.5),
+        #transforms.RandAugment(num_ops=3, magnitude=12),
+        transforms.TrivialAugmentWide(),
         transforms.ToTensor()
     ]
     explore_data.define_transformation_steps(transformation_steps=transform_steps)

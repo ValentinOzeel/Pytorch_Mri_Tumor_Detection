@@ -1,4 +1,13 @@
 RANDOM_SEED: null
 
 DATA_LOADER:
-  BATCH_SIZE: 32
+  BATCH_SIZE: 16
+
+DATA_TRANSFORM_AND_AUGMENTATION:
+  Resize: 
+      size: (64, 64)
+  RandAugment: 
+      num_ops: 2
+      magnitude: 12
+  TrivialAugmentWide:
+      num_magnitude_bins: 31

@@ -70,8 +70,28 @@ class OurCustomDataset(Dataset):
         return image, class_label
         
 
+class ConfigLoad():
+    def __init__(self, config):
+        self.config = config
+        
+    def get_transform(self, dict_name='DATA_TRANSFORM_AND_AUGMENTATION') -> List:
+        '''
+        Access transformation dict defined in config
+        Transform it as a list of torchvision.transforms steps
+        '''
+        yml_dict = self.config[dict_name]
+        steps = []
+        for step_name, params in yml_dict.items():
+            # Get the transforms method
+            transform_step = getattr(transforms, step_name)
+            
+            print(params)
+            # Initialize the transform method with its defined parameters and append in list
+            steps.append(transform_step(**params))
+        return steps
 
-
+    
+    
 class LoadOurData():
     
     def __init__(self,
@@ -113,7 +133,7 @@ class LoadOurData():
             return samples_per_class
         
         return count_samples_per_class(self.train_dataset, 'train'), count_samples_per_class(self.test_dataset, 'test')
-    
+        
     def load_data(self, DatasetClass: Dataset):
         self.train_dataset = DatasetClass(root=self.train_dir,
                                        transform=self.transform,
@@ -167,7 +187,7 @@ class LoadOurData():
         self.test_dataloader = DataLoader(dataset=self.test_dataset,
                                            batch_size=BATCH_SIZE,
                                            num_workers=os.cpu_count(),
-                                           test_shuffle=False)
+                                           shuffle=test_shuffle)
         
         return self.train_dataloader, self.test_dataloader
     
@@ -206,11 +226,10 @@ if __name__ == "__main__":
     
     train_dir = os.path.join(project_root_path, 'data', 'train')
     test_dir = os.path.join(project_root_path, 'data', 'test')
-    transform = transforms.Compose([
-        transforms.Resize(size=(64, 64)),
-        transforms.RandomHorizontalFlip(p=0.5),
-        transforms.ToTensor()
-    ])
+    
+    conf_load = ConfigLoad(config)
+    transform_steps = conf_load.get_transform()
+    transform = transforms.Compose(transform_steps)
     
     # Compare our custom dataset loading VS ImageFolder loading
     # Our custom dataset
@@ -226,6 +245,12 @@ if __name__ == "__main__":
     #                                   transform)  
     #instance_imagefolder.load_using_ImageFolderDataset()
     #instance_our_dataset.print_info_on_loaded_data()
+    
+    # Create DataLoaders to load images per in batches
+   # instance_our_dataset.create_dataloaders()
+   # # Get one iteration of train_dataloader (loading in batches)
+   # img, label = next(iter(instance_our_dataset.train_dataloader))
+   # print('Dataloader batches:', 'Image shapes', img.shape, 'label shapes', label.shape)
     
     # Print random transformed images
     instance_our_dataset.show_random_images()
