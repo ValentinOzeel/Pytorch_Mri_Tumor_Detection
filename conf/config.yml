@@ -5,9 +5,10 @@ DATA_LOADER:
 
 DATA_TRANSFORM_AND_AUGMENTATION:
   Resize: 
-      size: (64, 64)
+      size: [64, 64]
   RandAugment: 
       num_ops: 2
-      magnitude: 12
+      magnitude: 10
   TrivialAugmentWide:
       num_magnitude_bins: 31
+  ToTensor: {}

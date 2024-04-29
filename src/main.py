@@ -84,10 +84,11 @@ class ConfigLoad():
         for step_name, params in yml_dict.items():
             # Get the transforms method
             transform_step = getattr(transforms, step_name)
-            
-            print(params)
             # Initialize the transform method with its defined parameters and append in list
-            steps.append(transform_step(**params))
+            if params: 
+                steps.append(transform_step(**params))
+            else:
+                steps.append(transform_step()) 
         return steps
 
     
@@ -247,10 +248,10 @@ if __name__ == "__main__":
     #instance_our_dataset.print_info_on_loaded_data()
     
     # Create DataLoaders to load images per in batches
-   # instance_our_dataset.create_dataloaders()
-   # # Get one iteration of train_dataloader (loading in batches)
-   # img, label = next(iter(instance_our_dataset.train_dataloader))
-   # print('Dataloader batches:', 'Image shapes', img.shape, 'label shapes', label.shape)
+    instance_our_dataset.create_dataloaders()
+    # Get one iteration of train_dataloader (loading in batches)
+    img, label = next(iter(instance_our_dataset.train_dataloader))
+    print('Dataloader batches:', 'Image shapes', img.shape, 'label shapes', label.shape)
     
     # Print random transformed images
     instance_our_dataset.show_random_images()
