@@ -5,7 +5,7 @@ DATA_LOADER:
 
 DATA_TRANSFORM_AND_AUGMENTATION:
   Resize: 
-      size: [64, 64]
+      size: [224, 224]
   RandAugment: 
       num_ops: 2
       magnitude: 10
