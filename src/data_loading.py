@@ -11,8 +11,8 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 
-from colorama import init, Fore, Back, Style
-init() # Initialize Colorama to work on Windows
+from secondary_module import color_print
+from colorama import Fore
 
 from secondary_module import ConfigLoad
 
@@ -81,13 +81,15 @@ class LoadOurData():
         # self.test_transform to transform test_data differently than train_data
         self.test_transform = test_transform
         self.target_transform = target_transform
-    
+
         self.train_dataset = None
+        self.train_dataloader = None
         self.train_len = None
         self.train_classes = None
         self.train_class_to_idx = None
          
         self.test_dataset = None
+        self.test_dataloader = None
         self.test_len = None
         self.test_classes = None
         self.test_class_to_idx = None
@@ -130,25 +132,22 @@ class LoadOurData():
     
     def load_using_OurCustomDataset(self):
         return self.load_data(OurCustomDataset)
-    
-    def color_print(self, to_print, color):
-        return f"{color + to_print + Style.RESET_ALL}"
         
     def print_info_on_loaded_data(self):
         print(
-            self.color_print("---------- DATA INFO ----------", Fore.LIGHTGREEN_EX)
+            color_print("---------- DATA INFO ----------", Fore.LIGHTGREEN_EX)
         )
         print(
-            self.color_print("OurCustomDataset (TRAIN dataset):", Fore.RED),
-            self.color_print("\nLength: ", Fore.BLUE), self.train_len,       
-            self.color_print("\nClasses/labels: ", Fore.BLUE), self.train_class_to_idx,   
-            self.color_print("\nImages per class: ", Fore.BLUE), self.train_count_per_class, '\n'
+            color_print("OurCustomDataset (TRAIN dataset):", Fore.RED),
+            color_print("\nLength: ", Fore.BLUE), self.train_len,       
+            color_print("\nClasses/labels: ", Fore.BLUE), self.train_class_to_idx,   
+            color_print("\nImages per class: ", Fore.BLUE), self.train_count_per_class, '\n'
             )
         print(
-            self.color_print("OurCustomDataset (TEST dataset):", Fore.RED),
-            self.color_print("\nLength: ", Fore.BLUE), self.test_len,       
-            self.color_print("\nClasses/labels: ", Fore.BLUE), self.test_class_to_idx,   
-            self.color_print("\nImages per class: ", Fore.BLUE), self.test_count_per_class, '\n\n'
+            color_print("OurCustomDataset (TEST dataset):", Fore.RED),
+            color_print("\nLength: ", Fore.BLUE), self.test_len,       
+            color_print("\nClasses/labels: ", Fore.BLUE), self.test_class_to_idx,   
+            color_print("\nImages per class: ", Fore.BLUE), self.test_count_per_class, '\n\n'
             )    
         
         

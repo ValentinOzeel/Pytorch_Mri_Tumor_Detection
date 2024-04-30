@@ -1,7 +1,11 @@
 import os 
 import yaml
 from typing import List
+import torch
 from torchvision import transforms
+
+from colorama import init, Fore, Back, Style
+init() # Initialize Colorama to work on Windows
 
 # Assuming data_exploration.py is in src\main.py
 project_root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -33,3 +37,14 @@ class ConfigLoad():
             else:
                 steps.append(transform_step()) 
         return steps
+    
+
+def check_cuda_availability():
+    is_or_is_not = 'is' if torch.cuda.is_available() else 'is not'
+    symbol = '✔' if torch.cuda.is_available() else 'X'
+     
+    print(f"{symbol*2} --- Cuda {is_or_is_not} available on your machine. --- {symbol*2}")
+    
+    
+def color_print(self, to_print, color):
+    return f"{color + to_print + Style.RESET_ALL}"

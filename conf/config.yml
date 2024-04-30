@@ -12,3 +12,8 @@ DATA_TRANSFORM_AND_AUGMENTATION:
   TrivialAugmentWide:
       num_magnitude_bins: 31
   ToTensor: {}
+
+MODEL_PARAMS:
+  EPOCHS: 
+  OPTIMIZER: ffff
+  LOSS_FUNC: ggg
