@@ -12,9 +12,6 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 
 from secondary_module import color_print
-from colorama import Fore
-
-from secondary_module import ConfigLoad
 
 class OurCustomDataset(Dataset):
     '''
@@ -72,7 +69,7 @@ class LoadOurData():
                  transform,
                  test_transform=None,
                  target_transform=None,
-                 config=ConfigLoad().get_config()):
+                ):
         
         self.train_dir = train_dir 
         self.test_dir = test_dir
@@ -93,8 +90,6 @@ class LoadOurData():
         self.test_len = None
         self.test_classes = None
         self.test_class_to_idx = None
-        
-        self.config = config
 
     def count_per_class_train_and_test(self):
         def count_samples_per_class(dataset: Dataset, train_or_test: str):        
@@ -135,24 +130,23 @@ class LoadOurData():
         
     def print_info_on_loaded_data(self):
         print(
-            color_print("---------- DATA INFO ----------", Fore.LIGHTGREEN_EX)
+            color_print("---------- DATA INFO ----------", "LIGHTGREEN_EX")
         )
         print(
-            color_print("OurCustomDataset (TRAIN dataset):", Fore.RED),
-            color_print("\nLength: ", Fore.BLUE), self.train_len,       
-            color_print("\nClasses/labels: ", Fore.BLUE), self.train_class_to_idx,   
-            color_print("\nImages per class: ", Fore.BLUE), self.train_count_per_class, '\n'
+            color_print("OurCustomDataset (TRAIN dataset):", "RED"),
+            color_print("\nLength: ", "BLUE"), self.train_len,       
+            color_print("\nClasses/labels: ", "BLUE"), self.train_class_to_idx,   
+            color_print("\nImages per class: ", "BLUE"), self.train_count_per_class, '\n'
             )
         print(
-            color_print("OurCustomDataset (TEST dataset):", Fore.RED),
-            color_print("\nLength: ", Fore.BLUE), self.test_len,       
-            color_print("\nClasses/labels: ", Fore.BLUE), self.test_class_to_idx,   
-            color_print("\nImages per class: ", Fore.BLUE), self.test_count_per_class, '\n\n'
+            color_print("OurCustomDataset (TEST dataset):", "RED"),
+            color_print("\nLength: ", "BLUE"), self.test_len,       
+            color_print("\nClasses/labels: ", "BLUE"), self.test_class_to_idx,   
+            color_print("\nImages per class: ", "BLUE"), self.test_count_per_class, '\n\n'
             )    
         
         
-    def create_dataloaders(self, BATCH_SIZE:int=None, train_shuffle:bool=True, test_shuffle:bool=False):
-        BATCH_SIZE = self.config['DATA_LOADER']['BATCH_SIZE'] if BATCH_SIZE is None else BATCH_SIZE
+    def create_dataloaders(self, BATCH_SIZE:int, train_shuffle:bool=True, test_shuffle:bool=False):
         self.train_dataloader = DataLoader(dataset=self.train_dataset,
                                            batch_size=BATCH_SIZE,
                                            num_workers=os.cpu_count(),
@@ -167,14 +161,13 @@ class LoadOurData():
     
     
     def show_random_images(self,
+                           RANDOM_SEED:int = None,
                            str_dataset:str = 'train',
-                           n:int = 6,
-                           RANDOM_SEED:int = False):
+                           n:int = 6
+                           ):
         
         if isinstance(RANDOM_SEED, int): 
             random.seed(RANDOM_SEED)
-        elif RANDOM_SEED is False:
-            random.seed(self.config['RANDOM_SEED'])
 
         dataset = self.train_dataset if str_dataset.lower() == 'train' else self.test_dataset
         # Get random indexes in the range 0 - length dataset

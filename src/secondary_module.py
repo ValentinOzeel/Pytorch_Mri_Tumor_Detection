@@ -21,7 +21,7 @@ class ConfigLoad():
     def get_config(self):
         return self.config
             
-    def get_transform(self, dict_name='DATA_TRANSFORM_AND_AUGMENTATION') -> List:
+    def get_transform_steps(self, dict_name='DATA_TRANSFORM_AND_AUGMENTATION') -> List:
         '''
         Access transformation dict defined in config
         Transform it as a list of torchvision.transforms steps
@@ -46,5 +46,5 @@ def check_cuda_availability():
     print(f"{symbol*2} --- Cuda {is_or_is_not} available on your machine. --- {symbol*2}")
     
     
-def color_print(self, to_print, color):
-    return f"{color + to_print + Style.RESET_ALL}"
+def color_print(to_print, color):
+    return f"{getattr(Fore, color) + to_print + Style.RESET_ALL}"

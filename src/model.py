@@ -9,7 +9,6 @@ from torchvision import datasets, transforms
 
 from secondary_module import ConfigLoad
 from secondary_module import color_print
-from colorama import Fore
 
 class MRINeuralNet(nn.Module):
     '''
@@ -19,18 +18,22 @@ class MRINeuralNet(nn.Module):
                  input_shape:Tuple[int],
                  hidden_units:int,
                  output_shape:int,
-                 random_seed:bool = None):
+                 RANDOM_SEED: int = None,
+                 device: str = "cuda" if torch.cuda.is_available() else "cpu"
+                 ):
         
         super().__init__()
+        
+        # Set-up device agnostic model
+        self.to(device)
         
         self.input_shape = input_shape # [n_images, color_channels, height, width]
         self.hidden_units = hidden_units
         self.output_shape = output_shape # Number of classes
         
-        self.config_inst = ConfigLoad()
-        self.config = self.config_inst.get_config()
-        if random_seed is not None:
-            torch.manual_seed(self.config['RANDOM_SEED'])
+        if RANDOM_SEED is not None:
+            torch.manual_seed(RANDOM_SEED)
+            torch.cuda.manual_seed(RANDOM_SEED)
         
         self.conv_1 = nn.Sequential(
             nn.Conv2d(
@@ -71,10 +74,6 @@ class MRINeuralNet(nn.Module):
                 in_features=self.hidden_units * self.last_layer_output_shape[-2] * self.last_layer_output_shape[-1],
                 out_features=self.output_shape)
         )
-        
-        # Set-up device agnostic model
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.to(device)
 
     def _calculate_last_layer_output_shape(self):
         # Helper function to calculate the number of features after convolutional layers
@@ -102,10 +101,10 @@ class TrainTestEval():
                  train_dataloader: DataLoader,
                  test_dataloader: DataLoader,
                  optimizer: torch.optim.Optimizer,
-                 loss_func: nn.Module = nn.CrossEntropyLoss(),
+                 loss_func: nn.Module,
                  epochs: int = 10,
                  device: str = "cuda" if torch.cuda.is_available() else "cpu",
-                 random_seed = None
+                 RANDOM_SEED: int = None
                 ):
         
         self.model = model 
@@ -115,11 +114,10 @@ class TrainTestEval():
         self.loss_func = loss_func 
         self.epochs = epochs 
         self.device = device 
-        self.random_seed = random_seed
         
-        if self.random_seed is not None:
-            torch.manual_seed(self.random_seed)
-            torch.cuda.manual_seed(self.random_seed)
+        if RANDOM_SEED is not None:
+            torch.manual_seed(RANDOM_SEED)
+            torch.cuda.manual_seed(RANDOM_SEED)
         
 
     def training_step(self):
@@ -179,7 +177,6 @@ class TrainTestEval():
         test_acc = test_acc / len(self.test_dataloader)
         return test_loss, test_acc
 
-
     def training(self, verbose: bool = True):
 
         # Empty dict to track metrics
@@ -197,11 +194,11 @@ class TrainTestEval():
             if verbose:
                 # Print metrics for each epoch
                 print(
-                    color_print("Epoch: ", Fore.LIGHTGREEN_EX), epoch, '\n',
-                    color_print("train_loss: ", Fore.RED), train_loss, color_print(" | ", Fore.LIGHTMAGENTA_EX),
-                    color_print("train_acc: ", Fore.RED), train_acc, color_print(" | ", Fore.LIGHTMAGENTA_EX),
-                    color_print("test_loss: ", Fore.BLUE), test_loss, color_print(" | ", Fore.LIGHTMAGENTA_EX),
-                    color_print("test_acc: ", Fore.BLUE), test_acc, color_print(" | ", Fore.LIGHTMAGENTA_EX)
+                    color_print("\nEpoch: ", "LIGHTGREEN_EX"), epoch,
+                    color_print("train_loss: ", "RED"), f"{train_loss:.4f}", color_print(" | ", "LIGHTMAGENTA_EX"),
+                    color_print("train_acc: ", "RED"), f"{train_acc:.4f}", color_print(" | ", "LIGHTMAGENTA_EX"),
+                    color_print("test_loss: ", "BLUE"), f"{test_loss:.4f}", color_print(" | ", "LIGHTMAGENTA_EX"),
+                    color_print("test_acc: ", "BLUE"), f"{test_acc:.4f}", color_print(" | ", "LIGHTMAGENTA_EX")
                 )
 
             # Actualize result_metrics
