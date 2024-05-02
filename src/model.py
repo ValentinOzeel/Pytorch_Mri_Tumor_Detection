@@ -6,9 +6,10 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 
-
 from secondary_module import ConfigLoad
 from secondary_module import color_print
+
+import matplotlib.pyplot as plt
 
 class MRINeuralNet(nn.Module):
     '''
@@ -177,8 +178,7 @@ class TrainTestEval():
         test_acc = test_acc / len(self.test_dataloader)
         return test_loss, test_acc
 
-    def training(self, verbose: bool = True):
-
+    def training(self, verbose: bool = True, plot_metrics:bool = True):
         # Empty dict to track metrics
         self.training_metrics = {"train_loss": [],
                                  "train_acc": [],
@@ -186,11 +186,20 @@ class TrainTestEval():
                                  "test_acc": []
                                  }
 
+        # Initialize plot
+        if plot_metrics:
+            plt.figure(figsize=(16, 8))
+            plt.ion()  # Turn on interactive mode for dynamic plotting
+            
         # Loop through epochs 
         for epoch in tqdm(range(self.epochs)):
             train_loss, train_acc = self.training_step()
             test_loss, test_acc = self.testing_step()
 
+            # Actualize result_metrics
+            self.training_metrics["train_loss"].append(train_loss), self.training_metrics["train_acc"].append(train_acc)
+            self.training_metrics["test_loss"].append(test_loss), self.training_metrics["test_acc"].append(test_acc)
+            
             if verbose:
                 # Print metrics for each epoch
                 print(
@@ -201,8 +210,40 @@ class TrainTestEval():
                     color_print("test_acc: ", "BLUE"), f"{test_acc:.4f}", color_print(" | ", "LIGHTMAGENTA_EX")
                 )
 
-            # Actualize result_metrics
-            self.training_metrics["train_loss"].append(train_loss), self.training_metrics["train_acc"].append(train_acc)
-            self.training_metrics["test_loss"].append(test_loss), self.training_metrics["test_acc"].append(test_acc)
+            # Plot the metrics curves
+            if plot_metrics:
+                self.plot_metrics()
+            
+        if plot_metrics:
+            plt.tight_layout()
+            #plt.draw()
+            #plt.pause(0.1)
+            plt.ioff()  # Turn off interactive mode
+            fig = plt.gcf()  # Get the current figure
+            fig.savefig('training_metrics.png')
 
         return self.training_metrics
+
+    
+    def plot_metrics(self):       
+        plt.subplot(1, 2, 1)
+        plt.plot(range(len(self.training_metrics["train_loss"])), self.training_metrics["train_loss"], label='train_loss', color='red')
+        plt.plot(range(len(self.training_metrics["test_loss"])), self.training_metrics["test_loss"], label='test_loss', color='blue')
+        if not plt.gca().get_title(): 
+            plt.title("train_loss VS test_loss")
+            plt.xlabel('Epochs')
+            plt.ylabel('Loss')
+            plt.legend()
+
+        plt.subplot(1, 2, 2)
+        plt.plot(range(len(self.training_metrics["train_acc"])), self.training_metrics["train_acc"], label='train_acc', color='red')
+        plt.plot(range(len(self.training_metrics["test_acc"])), self.training_metrics["test_acc"], label='test_acc', color='blue')
+        if not plt.gca().get_title(): 
+            plt.title("train_acc VS test_acc")
+            plt.xlabel('Epochs')
+            plt.ylabel('Accuracy')
+            plt.legend()
+
+        plt.tight_layout()
+        plt.draw()
+        plt.pause(0.5)

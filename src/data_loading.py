@@ -163,7 +163,8 @@ class LoadOurData():
     def show_random_images(self,
                            RANDOM_SEED:int = None,
                            str_dataset:str = 'train',
-                           n:int = 6
+                           n:int = 6,
+                           display_seconds = 30
                            ):
         
         if isinstance(RANDOM_SEED, int): 
@@ -172,14 +173,14 @@ class LoadOurData():
         dataset = self.train_dataset if str_dataset.lower() == 'train' else self.test_dataset
         # Get random indexes in the range 0 - length dataset
         random_idxs = random.sample(range(len(dataset)), k=n)
-            
-        # Initiate plot
-        plt.figure(figsize=(20, 10))
         
+        # Initiate plot and start interactive mode (for non blocking plot)
+        plt.figure(figsize=(20, 5))
+        plt.ion()
+          
         # Loop over indexes and plot corresponding image
         for i, random_index in enumerate(random_idxs):
             image, label = dataset[random_index]
-            
             # Adjust tensor's dimensions for plotting : Color, Height, Width -> Height, Width, Color
             image = image.permute(1, 2, 0)
             # Set up subplot (number rows in subplot, number cols in subplot, index of subplot)
@@ -187,7 +188,10 @@ class LoadOurData():
             plt.imshow(image)
             plt.axis(False)
             plt.title(f"Class: {dataset.classes[label]}\n Shape: {image.shape}")
-
+        # Show the plot with tight layout for some time and then close the plot and deactivate interactive mode
         plt.tight_layout()
-        plt.show()
+        plt.draw() 
+        plt.pause(display_seconds)
+        plt.ioff()
+        plt.close()
         return

@@ -45,7 +45,7 @@ if __name__ == "__main__":
     #instance_imagefolder.print_info_on_loaded_data()
     
     # Print random transformed images
-    load_instance.show_random_images(RANDOM_SEED = config['RANDOM_SEED'])
+    load_instance.show_random_images(RANDOM_SEED = config['RANDOM_SEED'], display_seconds=20)
     
     # Create DataLoaders to load images per in batches
     # _______________
