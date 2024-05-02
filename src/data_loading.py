@@ -8,7 +8,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 
 import torch 
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, random_split
 from torchvision import datasets, transforms
 
 from secondary_module import color_print
@@ -63,114 +63,122 @@ class OurCustomDataset(Dataset):
         
     
 class LoadOurData():
-    def __init__(self,
-                 train_dir,
-                 test_dir,
-                 transform,
-                 test_transform=None,
-                 target_transform=None,
-                ):
+    def __init__(self, data_dir, DatasetClass:Dataset):
         
-        self.train_dir = train_dir 
-        self.test_dir = test_dir
-        
-        self.transform = transform
-        # self.test_transform to transform test_data differently than train_data
-        self.test_transform = test_transform
-        self.target_transform = target_transform
+        self.data_dir = data_dir
+        self.DatasetClass = DatasetClass
 
-        self.train_dataset = None
-        self.train_dataloader = None
-        self.train_len = None
-        self.train_classes = None
-        self.train_class_to_idx = None
-         
-        self.test_dataset = None
-        self.test_dataloader = None
-        self.test_len = None
-        self.test_classes = None
-        self.test_class_to_idx = None
+        self.dataset_types = ['train', 'valid', 'test']
+        
+        '''
+        After running load_data method we will have the 
+        following attributes for each dataset_type:
 
-    def count_per_class_train_and_test(self):
-        def count_samples_per_class(dataset: Dataset, train_or_test: str):        
-            # Initialize a defaultdict to count samples per class
-            if train_or_test not in ['train', 'test']: raise ValueError('train_or_test parameter should be "train" or "test".') 
-            classes = self.train_classes if train_or_test.lower() == 'train' else self.test_classes
+        self.{DATASET_TYPE}_dataset
+        self.{DATASET_TYPE}_dataloader
+        self.{DATASET_TYPE}_len
+        self.{DATASET_TYPE}_classes
+        self.{DATASET_TYPE}_class_to_idx
+        '''
 
-            samples_per_class = defaultdict(int)
-            # Iterate over all samples and count occurrences of each class  
-            for _, label in dataset:
-                img_class = classes[label]
-                samples_per_class[img_class] += 1
-            return samples_per_class
+
+    def count_samples_per_class(self, dataset: Dataset, dataset_type: str):     
+        # Initialize a defaultdict to count samples per class
+        if dataset_type.lower() not in self.dataset_types: 
+            raise ValueError('dataset_type should be "train", "valid" or "test".') 
+        classes = getattr(self, ''.join([dataset_type, '_classes']))
         
-        return count_samples_per_class(self.train_dataset, 'train'), count_samples_per_class(self.test_dataset, 'test')
+        samples_per_class = defaultdict(int)
+        # Iterate over all samples and count occurrences of each class  
+        for _, label in dataset:
+            img_class = classes[label]
+            samples_per_class[img_class] += 1
+            
+        return samples_per_class
+
         
-    def load_data(self, DatasetClass: Dataset):
-        self.train_dataset = DatasetClass(root=self.train_dir,
-                                       transform=self.transform,
-                                       target_transform=self.target_transform)
+    def load_data(self,                  
+                  transform:transforms.Compose,
+                  test_transform:transforms.Compose = None,
+                  target_transform:transforms.Compose = None,
+                  train_ratio:int = 0.8,
+                  valid_ratio:int = 0.1,
+                  test_ratio:int = 0.1
+                  ):
         
-        test_transform = self.test_transform if self.test_transform is not None else self.transform
-        self.test_dataset = DatasetClass(root=self.test_dir,
-                                      transform=test_transform,
-                                      target_transform=self.target_transform)
+        if sum([train_ratio, valid_ratio, test_ratio]) != 1:
+            raise ValueError("Sum of train_ratio, valid_ratio and test_ratio must equal 1.")
         
-        self.train_len, self.test_len = len(self.train_dataset), len(self.test_dataset)
-        self.train_classes, self.test_classes = self.train_dataset.classes, self.test_dataset.classes
-        self.train_class_to_idx, self.test_class_to_idx = self.train_dataset.class_to_idx, self.test_dataset.class_to_idx
-        self.train_count_per_class, self.test_count_per_class = self.count_per_class_train_and_test()
-        return self.train_dataset, self.test_dataset
+        # Load all our data without any transform
+        original_dataset = self.DatasetClass(root=self.data_dir, transform=None, target_transform=target_transform)
+        # Define the sizes of training, validation, and test sets
+        train_size = int(train_ratio * len(original_dataset))
+        valid_size = int(valid_ratio * len(original_dataset))
+        # Set all remaining images to test dataset (to avoid leaving one image unaccounted for)
+        test_size = len(original_dataset) - train_size - valid_size
         
-    def load_using_ImageFolderDataset(self):
-        return self.load_data(datasets.ImageFolder)
-    
-    def load_using_OurCustomDataset(self):
-        return self.load_data(OurCustomDataset)
+        # Split the original dataset into training, validation, and test sets
+        self.train_dataset, self.valid_dataset, self.test_dataset = random_split(original_dataset, [train_size, valid_size, test_size])
+
+        # Apply the corresponding transformations to each dataset
+        self.train_dataset.dataset.transform = transform
+        self.valid_dataset.dataset.transform = transform
+        self.test_dataset.dataset.transform = test_transform if test_transform is not None else transform
+
+        for dataset_type in self.dataset_types:
+            # Access dataset
+            dataset = getattr(self, ''.join([dataset_type, '_dataset']))
+            # Calculate dataset's length
+            setattr(self, ''.join([dataset_type, '_len']), len(dataset)) 
+            # Get its classes (same as original dataset)
+            setattr(self, ''.join([dataset_type, '_classes']), original_dataset.classes) 
+            # Get its class_to_idx (same as original dataset)
+            setattr(self, ''.join([dataset_type, '_class_to_idx']), original_dataset.class_to_idx)
+            # Get count per class
+            setattr(self, ''.join([dataset_type, '_count_per_class']), self.count_samples_per_class(dataset, dataset_type))
+            
+        return self.train_dataset, self.valid_dataset, self.test_dataset
+     
         
     def print_info_on_loaded_data(self):
         print(
-            color_print("---------- DATA INFO ----------", "LIGHTGREEN_EX")
+            color_print("---------- DATASETS INFO ----------", "LIGHTGREEN_EX")
         )
-        print(
-            color_print("OurCustomDataset (TRAIN dataset):", "RED"),
-            color_print("\nLength: ", "BLUE"), self.train_len,       
-            color_print("\nClasses/labels: ", "BLUE"), self.train_class_to_idx,   
-            color_print("\nImages per class: ", "BLUE"), self.train_count_per_class, '\n'
+        
+        for dataset_type in self.dataset_types:
+            print(
+                color_print(f"Info regarding {dataset_type}_dataset:", "RED"),
+                color_print("\nLength: ", "BLUE"), getattr(self, ''.join([dataset_type, '_len'])),       
+                color_print("\nClasses/labels: ", "BLUE"), getattr(self, ''.join([dataset_type, '_class_to_idx'])), 
+                color_print("\nImages per class: ", "BLUE"), getattr(self, ''.join([dataset_type, '_count_per_class'])), '\n'     
             )
-        print(
-            color_print("OurCustomDataset (TEST dataset):", "RED"),
-            color_print("\nLength: ", "BLUE"), self.test_len,       
-            color_print("\nClasses/labels: ", "BLUE"), self.test_class_to_idx,   
-            color_print("\nImages per class: ", "BLUE"), self.test_count_per_class, '\n\n'
-            )    
+  
         
         
-    def create_dataloaders(self, BATCH_SIZE:int, train_shuffle:bool=True, test_shuffle:bool=False):
-        self.train_dataloader = DataLoader(dataset=self.train_dataset,
-                                           batch_size=BATCH_SIZE,
-                                           num_workers=os.cpu_count(),
-                                           shuffle=train_shuffle)
-
-        self.test_dataloader = DataLoader(dataset=self.test_dataset,
-                                           batch_size=BATCH_SIZE,
-                                           num_workers=os.cpu_count(),
-                                           shuffle=test_shuffle)
-        
-        return self.train_dataloader, self.test_dataloader
+    def create_dataloaders(self, BATCH_SIZE:int, train_shuffle:bool=True, valid_shuffle:bool=True, test_shuffle:bool=False):
+        shuffle = {"train":train_shuffle, "valid":valid_shuffle, "test":test_shuffle}
+        for dataset_type in self.dataset_types:
+            data_loader = DataLoader(dataset=getattr(self, ''.join([dataset_type, '_dataset'])),
+                                     batch_size=BATCH_SIZE,
+                                     num_workers=os.cpu_count(),
+                                     shuffle=shuffle[dataset_type])
+            setattr(self, ''.join([dataset_type, '_dataloader']), data_loader) 
+            
+        return self.train_dataloader, self.valid_dataloader, self.test_dataloader
     
     
     def show_random_images(self,
                            RANDOM_SEED:int = None,
-                           str_dataset:str = 'train',
+                           dataset_type:str = 'train',
                            n:int = 6,
-                           display_seconds = 30
+                           display_seconds:int= 30
                            ):
         
         if isinstance(RANDOM_SEED, int): 
             random.seed(RANDOM_SEED)
 
-        dataset = self.train_dataset if str_dataset.lower() == 'train' else self.test_dataset
+        dataset = getattr(self, ''.join([dataset_type.lower(), '_dataset']))
+        classes = getattr(self, ''.join([dataset_type.lower(), '_classes']))
         # Get random indexes in the range 0 - length dataset
         random_idxs = random.sample(range(len(dataset)), k=n)
         
@@ -187,7 +195,7 @@ class LoadOurData():
             plt.subplot(1, n, i+1)
             plt.imshow(image)
             plt.axis(False)
-            plt.title(f"Class: {dataset.classes[label]}\n Shape: {image.shape}")
+            plt.title(f"Class: {classes[label]}\n Shape: {image.shape}")
         # Show the plot with tight layout for some time and then close the plot and deactivate interactive mode
         plt.tight_layout()
         plt.draw() 

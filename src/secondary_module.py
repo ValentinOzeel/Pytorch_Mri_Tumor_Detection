@@ -21,12 +21,12 @@ class ConfigLoad():
     def get_config(self):
         return self.config
             
-    def get_transform_steps(self, dict_name='DATA_TRANSFORM_AND_AUGMENTATION', train_or_test='train') -> List:
+    def get_transform_steps(self, dict_name='DATA_TRANSFORM_AND_AUGMENTATION', dataset_type='train') -> List:
         '''
         Access transformation dict defined in config
         Transform it as a list of torchvision.transforms steps
         '''
-        yml_dict = self.config[dict_name][train_or_test.lower()]
+        yml_dict = self.config[dict_name][dataset_type.lower()]
         steps = []
         for step_name, params in yml_dict.items():
             # Get the transforms method

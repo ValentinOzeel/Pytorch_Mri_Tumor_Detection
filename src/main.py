@@ -1,12 +1,12 @@
 # Data transformation (into tensor and torch.utils.data.Dataset -> torch.utils.data.DataLoader)
 import os
 import torch
-from torchvision import transforms
+from torchvision import datasets, transforms
 from torchinfo import summary
 
 from timeit import default_timer as timer
 
-from data_loading import LoadOurData
+from data_loading import LoadOurData, OurCustomDataset
 from secondary_module import ConfigLoad, check_cuda_availability, color_print
 from model import MRINeuralNet, TrainTestEval
 
@@ -16,38 +16,50 @@ if __name__ == "__main__":
     # _______________
     # Assuming data_exploration.py is in src\main.py
     project_root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    train_dir = os.path.join(project_root_path, 'data', 'train')
-    test_dir = os.path.join(project_root_path, 'data', 'test')
+    data_dir = os.path.join(project_root_path, 'data')
+    
     
     # Get config data
     # _______________
     conf_instance = ConfigLoad()
     config = conf_instance.get_config()
+    # train_transform used for train and valid datasets
     train_transform_steps = conf_instance.get_transform_steps()
     train_transform = transforms.Compose(train_transform_steps)
-    test_transform_steps = conf_instance.get_transform_steps(train_or_test='test')
+    # test_transform used for test_dataset (because we want to predict on real life data (only resized and transformed asd tensor))
+    test_transform_steps = conf_instance.get_transform_steps(dataset_type='test')
     test_transform = transforms.Compose(test_transform_steps) 
+    
+    
     # Load and transform our MRI images
     # _______________
     
     # Compare our custom dataset loading (load_instance) VS ImageFolder loading (instance_imagefolder):
     # Our custom dataset
-    load_instance = LoadOurData(train_dir,
-                                test_dir,
-                                train_transform,
-                                test_transform=test_transform)
-    load_instance.load_using_OurCustomDataset()
+    load_instance = LoadOurData(data_dir, OurCustomDataset)
+    load_instance.load_data(train_transform,
+                            test_transform=test_transform,
+                            target_transform=None,
+                            train_ratio=0.8,
+                            valid_ratio=0.1,
+                            test_ratio=0.1
+                            )
     load_instance.print_info_on_loaded_data()
     
     ### ImageFolder dataset
-    #instance_imagefolder = LoadOurData(train_dir,
-    #                                   test_dir,
-    #                                   transform)  
-    #instance_imagefolder.load_using_ImageFolderDataset()
-    #instance_imagefolder.print_info_on_loaded_data()
-    
+    #load_instance = LoadOurData(data_dir, datasets.ImageFolder)
+    #load_instance.load_data(train_transform,
+    #                        test_transform=test_transform,
+    #                        target_transform=None,
+    #                        train_ratio=0.8,
+    #                        valid_ratio=0.1,
+    #                        test_ratio=0.1
+    #                        )
+    #load_instance.print_info_on_loaded_data()
+
     # Print random transformed images
-    load_instance.show_random_images(RANDOM_SEED = config['RANDOM_SEED'], display_seconds=20)
+    load_instance.show_random_images(RANDOM_SEED=config['RANDOM_SEED'], dataset_type='train', display_seconds=20)
+    
     
     # Create DataLoaders to load images per in batches
     # _______________
@@ -83,6 +95,7 @@ if __name__ == "__main__":
     train_test_eval_inst = TrainTestEval(
                                      model = base_model,
                                      train_dataloader = load_instance.train_dataloader,
+                                     valid_dataloader = load_instance.valid_dataloader,
                                      test_dataloader = load_instance.test_dataloader,
                                      optimizer = optimizer(params=base_model.parameters(), **optimizer_params),
                                      loss_func = loss_func(),
@@ -90,7 +103,7 @@ if __name__ == "__main__":
                                      device = device,
                                      RANDOM_SEED = config['RANDOM_SEED']
                                     )
-
+    
     start_time = timer()
     base_model_results = train_test_eval_inst.training()
     end_time = timer()

@@ -100,6 +100,7 @@ class TrainTestEval():
     def __init__(self,
                  model: nn.Module,
                  train_dataloader: DataLoader,
+                 valid_dataloader: DataLoader,
                  test_dataloader: DataLoader,
                  optimizer: torch.optim.Optimizer,
                  loss_func: nn.Module,
@@ -110,6 +111,7 @@ class TrainTestEval():
         
         self.model = model 
         self.train_dataloader = train_dataloader
+        self.valid_dataloader = valid_dataloader
         self.test_dataloader = test_dataloader
         self.optimizer = optimizer
         self.loss_func = loss_func 
@@ -152,38 +154,38 @@ class TrainTestEval():
         return train_loss, train_acc
 
 
-    def testing_step(self):
+    def validation_step(self):
         # Model in eval mode
         self.model.eval()
-        # Setup test loss and accuracy 
-        test_loss, test_acc = 0, 0
+        # Setup valid loss and accuracy 
+        valid_loss, valid_acc = 0, 0
 
         # Inference mode (not to compute gradient)
         with torch.inference_mode():
             # Loop over batches
-            for i, (imgs, labels) in enumerate(self.test_dataloader):
+            for i, (imgs, labels) in enumerate(self.valid_dataloader):
                 # Set data to device
                 imgs, labels = imgs.to(self.device), labels.to(self.device)
                 # Forward pass
-                test_pred_logit = self.model(imgs)
-                # Calculate test loss
-                loss = self.loss_func(test_pred_logit, labels)
-                test_loss += loss.item()
+                valid_pred_logit = self.model(imgs)
+                # Calculate valid loss
+                loss = self.loss_func(valid_pred_logit, labels)
+                valid_loss += loss.item()
                 # Calculate accuracy
-                predicted_classes = test_pred_logit.argmax(dim=1)
-                test_acc += ((predicted_classes==labels).sum().item()/len(predicted_classes))
+                predicted_classes = valid_pred_logit.argmax(dim=1)
+                valid_acc += ((predicted_classes==labels).sum().item()/len(predicted_classes))
 
         # Average metrics per batch
-        test_loss = test_loss / len(self.test_dataloader)
-        test_acc = test_acc / len(self.test_dataloader)
-        return test_loss, test_acc
+        valid_loss = valid_loss / len(self.valid_dataloader)
+        valid_acc = valid_acc / len(self.valid_dataloader)
+        return valid_loss, valid_acc
 
     def training(self, verbose: bool = True, plot_metrics:bool = True):
         # Empty dict to track metrics
         self.training_metrics = {"train_loss": [],
                                  "train_acc": [],
-                                 "test_loss": [],
-                                 "test_acc": []
+                                 "valid_loss": [],
+                                 "valid_acc": []
                                  }
 
         # Initialize plot
@@ -194,11 +196,11 @@ class TrainTestEval():
         # Loop through epochs 
         for epoch in tqdm(range(self.epochs)):
             train_loss, train_acc = self.training_step()
-            test_loss, test_acc = self.testing_step()
+            valid_loss, valid_acc = self.validation_step()
 
             # Actualize result_metrics
             self.training_metrics["train_loss"].append(train_loss), self.training_metrics["train_acc"].append(train_acc)
-            self.training_metrics["test_loss"].append(test_loss), self.training_metrics["test_acc"].append(test_acc)
+            self.training_metrics["valid_loss"].append(valid_loss), self.training_metrics["valid_acc"].append(valid_acc)
             
             if verbose:
                 # Print metrics for each epoch
@@ -206,8 +208,8 @@ class TrainTestEval():
                     color_print("\nEpoch: ", "LIGHTGREEN_EX"), epoch,
                     color_print("train_loss: ", "RED"), f"{train_loss:.4f}", color_print(" | ", "LIGHTMAGENTA_EX"),
                     color_print("train_acc: ", "RED"), f"{train_acc:.4f}", color_print(" | ", "LIGHTMAGENTA_EX"),
-                    color_print("test_loss: ", "BLUE"), f"{test_loss:.4f}", color_print(" | ", "LIGHTMAGENTA_EX"),
-                    color_print("test_acc: ", "BLUE"), f"{test_acc:.4f}", color_print(" | ", "LIGHTMAGENTA_EX")
+                    color_print("valid_loss: ", "BLUE"), f"{valid_loss:.4f}", color_print(" | ", "LIGHTMAGENTA_EX"),
+                    color_print("valid_acc: ", "BLUE"), f"{valid_acc:.4f}", color_print(" | ", "LIGHTMAGENTA_EX")
                 )
 
             # Plot the metrics curves
@@ -228,18 +230,18 @@ class TrainTestEval():
     def plot_metrics(self):       
         plt.subplot(1, 2, 1)
         plt.plot(range(len(self.training_metrics["train_loss"])), self.training_metrics["train_loss"], label='train_loss', color='red')
-        plt.plot(range(len(self.training_metrics["test_loss"])), self.training_metrics["test_loss"], label='test_loss', color='blue')
+        plt.plot(range(len(self.training_metrics["valid_loss"])), self.training_metrics["valid_loss"], label='valid_loss', color='blue')
         if not plt.gca().get_title(): 
-            plt.title("train_loss VS test_loss")
+            plt.title("train_loss VS valid_loss")
             plt.xlabel('Epochs')
             plt.ylabel('Loss')
             plt.legend()
 
         plt.subplot(1, 2, 2)
         plt.plot(range(len(self.training_metrics["train_acc"])), self.training_metrics["train_acc"], label='train_acc', color='red')
-        plt.plot(range(len(self.training_metrics["test_acc"])), self.training_metrics["test_acc"], label='test_acc', color='blue')
+        plt.plot(range(len(self.training_metrics["valid_acc"])), self.training_metrics["valid_acc"], label='valid_acc', color='blue')
         if not plt.gca().get_title(): 
-            plt.title("train_acc VS test_acc")
+            plt.title("train_acc VS valid_acc")
             plt.xlabel('Epochs')
             plt.ylabel('Accuracy')
             plt.legend()
@@ -247,3 +249,6 @@ class TrainTestEval():
         plt.tight_layout()
         plt.draw()
         plt.pause(0.5)
+        
+    def evaluate_on_unseen_data(self):
+        return
