@@ -4,14 +4,19 @@ DATA_LOADER:
   BATCH_SIZE: 16
 
 DATA_TRANSFORM_AND_AUGMENTATION:
-  Resize: 
-      size: [16, 16]
-  RandAugment: 
-      num_ops: 2
-      magnitude: 10
-  TrivialAugmentWide:
-      num_magnitude_bins: 31
-  ToTensor: {}
+  train:
+    Resize: 
+        size: [224, 224]
+    RandAugment: 
+        num_ops: 2
+        magnitude: 10
+    TrivialAugmentWide:
+        num_magnitude_bins: 31
+    ToTensor: {}
+  test:
+    Resize: 
+        size: [224, 224]
+    ToTensor: {}
 
 MODEL_PARAMS:
   HIDDEN_UNITS: 10

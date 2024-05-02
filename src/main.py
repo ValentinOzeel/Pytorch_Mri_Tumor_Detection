@@ -23,9 +23,10 @@ if __name__ == "__main__":
     # _______________
     conf_instance = ConfigLoad()
     config = conf_instance.get_config()
-    transform_steps = conf_instance.get_transform_steps()
-    transform = transforms.Compose(transform_steps)
-    
+    train_transform_steps = conf_instance.get_transform_steps()
+    train_transform = transforms.Compose(train_transform_steps)
+    test_transform_steps = conf_instance.get_transform_steps(train_or_test='test')
+    test_transform = transforms.Compose(test_transform_steps) 
     # Load and transform our MRI images
     # _______________
     
@@ -33,7 +34,8 @@ if __name__ == "__main__":
     # Our custom dataset
     load_instance = LoadOurData(train_dir,
                                 test_dir,
-                                transform)
+                                train_transform,
+                                test_transform=test_transform)
     load_instance.load_using_OurCustomDataset()
     load_instance.print_info_on_loaded_data()
     
