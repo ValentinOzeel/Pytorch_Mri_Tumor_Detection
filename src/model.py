@@ -250,5 +250,36 @@ class TrainTestEval():
         plt.draw()
         plt.pause(0.5)
         
-    def evaluate_on_unseen_data(self):
-        return
+    def evaluate_on_unseen_data(self, test_dataloader:DataLoader=None):
+        test_dataloader = self.test_dataloader if test_dataloader is None else test_dataloader
+        # Model in eval mode
+        self.model.eval()
+        # Setup test loss and accuracy 
+        test_loss, test_acc = 0, 0
+
+        # Inference mode (not to compute gradient)
+        with torch.inference_mode():
+            # Loop over batches
+            for i, (imgs, labels) in enumerate(test_dataloader):
+                # Set data to device
+                imgs, labels = imgs.to(self.device), labels.to(self.device)
+                # Forward pass
+                test_pred_logit = self.model(imgs)
+                # Calculate valid loss
+                loss = self.loss_func(test_pred_logit, labels)
+                test_loss += loss.item()
+                # Calculate accuracy
+                predicted_classes = test_pred_logit.argmax(dim=1)
+                test_acc += ((predicted_classes==labels).sum().item()/len(predicted_classes))
+
+        # Average metrics per batch
+        test_loss = test_loss / len(test_dataloader)
+        test_acc = test_acc / len(test_dataloader)
+        
+        print(
+            color_print("\nModel evaluation: ", "LIGHTGREEN_EX"),
+            color_print("test_loss: ", "RED"), f"{test_loss:.4f}", color_print(" | ", "LIGHTMAGENTA_EX"),
+            color_print("test_acc: ", "RED"), f"{test_acc:.4f}", color_print(" | ", "LIGHTMAGENTA_EX"),
+        )
+                
+        return test_loss, test_acc

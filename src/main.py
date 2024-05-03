@@ -1,4 +1,3 @@
-# Data transformation (into tensor and torch.utils.data.Dataset -> torch.utils.data.DataLoader)
 import os
 import torch
 from torchvision import datasets, transforms
@@ -73,7 +72,6 @@ if __name__ == "__main__":
     check_cuda_availability()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     # Define model 
-
     # Convert the torch.Size object to a tuple of integers
     base_model = MRINeuralNet(input_shape=img_batch.shape, 
                               hidden_units=config['MODEL_PARAMS']['HIDDEN_UNITS'], 
