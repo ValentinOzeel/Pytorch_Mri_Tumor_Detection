@@ -250,7 +250,7 @@ class TrainTestEval():
         plt.draw()
         plt.pause(0.5)
         
-    def evaluate_on_unseen_data(self, test_dataloader:DataLoader=None):
+    def inference(self, test_dataloader:DataLoader=None):
         test_dataloader = self.test_dataloader if test_dataloader is None else test_dataloader
         # Model in eval mode
         self.model.eval()
