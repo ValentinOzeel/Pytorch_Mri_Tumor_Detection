@@ -82,13 +82,13 @@ class Main():
                 for fold, dataset in enumerate(self.load.cross_valid_datasets[dataset_type]):
                     self.load.cross_valid_datasets_metadata[dataset_type][fold] = self.load.get_dataset_metadata(dataset)
                     
-            if verbose: self.load.print_dataset_info()
+            if verbose: self.load.print_dataset_info(n_splits=kf.get_n_splits())
             
             # Apply transformation to the test dataset
-            self.load.apply_transformation(dataset_transform=[(self.load.test_dataset,  self.test_transform)])
+            self.load.apply_transformations(dataset_transform=[(self.load.test_dataset,  self.test_transform)])
             # Apply transformation to train and valid datasets for each fold
             for dataset_type in ['train', 'valid']:
-                self.load.apply_transformation(dataset_transform=[
+                self.load.apply_transformations(dataset_transform=[
                     (x, self.train_transform) for x in self.load.cross_valid_datasets[dataset_type]
                     ])
 
@@ -114,10 +114,67 @@ if __name__ == "__main__":
               dataset_class = datasets.ImageFolder,
               train_test_split = 0.85)
     
-    dl.load_data(cv=5)
+    #dl.load_data(cv=5)
+    dl.load_data()
+    
+    # Create DataLoaders to load images per in batches
+    # _______________
+    dl.load.generate_dataloaders(BATCH_SIZE = dl.config['DATA_LOADER']['BATCH_SIZE'])
+    # Get one iteration of train_dataloader (loading in batches)
+    img_batch, label_batch = next(iter(dl.load.train_dataloader))
+    #img_batch, label_batch = next(iter(dl.load.cross_valid_dataloaders['train']))
+    print('Dataloader batches:', 'Image shapes', img_batch.shape, 'label shapes', label_batch.shape)
+
+    # Print random transformed images
+    dl.load.show_random_images(RANDOM_SEED=dl.config['RANDOM_SEED'], dataset_type='train', display_seconds=20)
+    
+
+
+    # Model
+    # Setup device-agnostic device
+    check_cuda_availability()
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    # Define model 
+    # Convert the torch.Size object to a tuple of integers
+    base_model = MRINeuralNet(input_shape=img_batch.shape, 
+                              hidden_units=dl.config['MODEL_PARAMS']['HIDDEN_UNITS'], 
+                              output_shape=len(dl.load.classes)
+                              ).to(device)
+
+    # Put img_batch to device
+    # Try model with one batch
+    output = base_model(img_batch.to(device))
+    summary(base_model, input_size=img_batch.shape)
+    # Get optimizer and intialize its parameters (all from config)
+    optimizer_name = next(iter(dl.config['MODEL_PARAMS']['OPTIMIZER']))
+    optimizer = getattr(torch.optim, optimizer_name)
+    optimizer_params = dl.config['MODEL_PARAMS']['OPTIMIZER'][optimizer_name]
+    # Get loos function
+    loss_func =  getattr(torch.nn, dl.config['MODEL_PARAMS']['LOSS_FUNC'])
+
+    # Initiate TrainTestEval class instance
+    train_test_eval_inst = TrainTestEval(
+                                     model = base_model,
+                                     optimizer = optimizer(params=base_model.parameters(), **optimizer_params),
+                                     loss_func = loss_func(),
+                                     epochs = dl.config['MODEL_PARAMS']['EPOCHS'],
+                                     device = device,
+                                     RANDOM_SEED = dl.config['RANDOM_SEED']
+                                    )
+    
+    start_time = timer()
+    base_model_results = train_test_eval_inst.training()
+    end_time = timer()
+    training_time = f"{(end_time-start_time):.4f}"
+    print(f"Training time: {color_print(training_time, 'LIGHTRED_EX')} seconds") 
     
     
-    
+    start_time = timer()
+    inference_loss, inference_acc = train_test_eval_inst.inference()
+    end_time = timer()
+    training_time = f"{(end_time-start_time):.4f}"
+    print(f"Inference time: {color_print(training_time, 'LIGHTRED_EX')} seconds") 
+     
     
     
 #    

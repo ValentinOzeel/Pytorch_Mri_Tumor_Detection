@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Dict
 from tqdm.auto import tqdm
 
 import torch 
@@ -99,9 +99,6 @@ class MRINeuralNet(nn.Module):
 class TrainTestEval():
     def __init__(self,
                  model: nn.Module,
-                 train_dataloader: DataLoader,
-                 valid_dataloader: DataLoader,
-                 test_dataloader: DataLoader,
                  optimizer: torch.optim.Optimizer,
                  loss_func: nn.Module,
                  epochs: int = 10,
@@ -110,9 +107,6 @@ class TrainTestEval():
                 ):
         
         self.model = model 
-        self.train_dataloader = train_dataloader
-        self.valid_dataloader = valid_dataloader
-        self.test_dataloader = test_dataloader
         self.optimizer = optimizer
         self.loss_func = loss_func 
         self.epochs = epochs 
@@ -123,14 +117,14 @@ class TrainTestEval():
             torch.cuda.manual_seed(RANDOM_SEED)
         
 
-    def training_step(self):
+    def training_step(self, train_dataloader:DataLoader):
         # Activate training mode
         self.model.train()
         # Setup training loss and accuracy
         train_loss, train_acc = 0, 0
 
         # Loop over dataloader batches
-        for i, (imgs, labels) in enumerate(self.train_dataloader):
+        for i, (imgs, labels) in enumerate(train_dataloader):
             # Data to device
             imgs, labels = imgs.to(self.device), labels.to(self.device)
             # Forward pass
@@ -149,12 +143,12 @@ class TrainTestEval():
             train_acc += (predicted_classes==labels).sum().item()/len(predictions)
 
         # Average metrics per batch
-        train_loss = train_loss / len(self.train_dataloader)
-        train_acc = train_acc / len(self.train_dataloader)
+        train_loss = train_loss / len(train_dataloader)
+        train_acc = train_acc / len(train_dataloader)
         return train_loss, train_acc
 
 
-    def validation_step(self):
+    def validation_step(self, valid_dataloader:DataLoader):
         # Model in eval mode
         self.model.eval()
         # Setup valid loss and accuracy 
@@ -163,7 +157,7 @@ class TrainTestEval():
         # Inference mode (not to compute gradient)
         with torch.inference_mode():
             # Loop over batches
-            for i, (imgs, labels) in enumerate(self.valid_dataloader):
+            for i, (imgs, labels) in enumerate(valid_dataloader):
                 # Set data to device
                 imgs, labels = imgs.to(self.device), labels.to(self.device)
                 # Forward pass
@@ -176,17 +170,17 @@ class TrainTestEval():
                 valid_acc += ((predicted_classes==labels).sum().item()/len(predicted_classes))
 
         # Average metrics per batch
-        valid_loss = valid_loss / len(self.valid_dataloader)
-        valid_acc = valid_acc / len(self.valid_dataloader)
+        valid_loss = valid_loss / len(valid_dataloader)
+        valid_acc = valid_acc / len(valid_dataloader)
         return valid_loss, valid_acc
 
-    def training(self, verbose: bool = True, plot_metrics:bool = True):
+    def training(self, train_dataloader:DataLoader, valid_dataloader:DataLoader, verbose: bool = True, plot_metrics:bool = True):
         # Empty dict to track metrics
-        self.training_metrics = {"train_loss": [],
-                                 "train_acc": [],
-                                 "valid_loss": [],
-                                 "valid_acc": []
-                                 }
+        training_metrics = {"train_loss": [],
+                            "train_acc": [],
+                            "valid_loss": [],
+                            "valid_acc": []
+                            }
 
         # Initialize plot
         if plot_metrics:
@@ -195,12 +189,12 @@ class TrainTestEval():
             
         # Loop through epochs 
         for epoch in tqdm(range(self.epochs)):
-            train_loss, train_acc = self.training_step()
-            valid_loss, valid_acc = self.validation_step()
+            train_loss, train_acc = self.training_step(train_dataloader)
+            valid_loss, valid_acc = self.validation_step(valid_dataloader)
 
             # Actualize result_metrics
-            self.training_metrics["train_loss"].append(train_loss), self.training_metrics["train_acc"].append(train_acc)
-            self.training_metrics["valid_loss"].append(valid_loss), self.training_metrics["valid_acc"].append(valid_acc)
+            training_metrics["train_loss"].append(train_loss), training_metrics["train_acc"].append(train_acc)
+            training_metrics["valid_loss"].append(valid_loss), training_metrics["valid_acc"].append(valid_acc)
             
             if verbose:
                 # Print metrics for each epoch
@@ -214,7 +208,7 @@ class TrainTestEval():
 
             # Plot the metrics curves
             if plot_metrics:
-                self.plot_metrics()
+                self.plot_metrics(training_metrics)
             
         if plot_metrics:
             plt.tight_layout()
@@ -224,13 +218,20 @@ class TrainTestEval():
             fig = plt.gcf()  # Get the current figure
             fig.savefig('training_metrics.png')
 
-        return self.training_metrics
+        return training_metrics
 
-    
-    def plot_metrics(self):       
+    def cross_validation(self, cross_valid_dataloaders:Dict):
+        training_metrics_per_fold = []
+        for fold, (train_dataloader, valid_dataloader) in enumerate(zip(cross_valid_dataloaders['train'], cross_valid_dataloaders['valid'])):
+            training_metrics_per_fold.append(self.training(train_dataloader, valid_dataloader))
+        return training_metrics_per_fold
+        
+        
+        
+    def plot_metrics(self, training_metrics:Dict):       
         plt.subplot(1, 2, 1)
-        plt.plot(range(len(self.training_metrics["train_loss"])), self.training_metrics["train_loss"], label='train_loss', color='red')
-        plt.plot(range(len(self.training_metrics["valid_loss"])), self.training_metrics["valid_loss"], label='valid_loss', color='blue')
+        plt.plot(range(len(training_metrics["train_loss"])), training_metrics["train_loss"], label='train_loss', color='red')
+        plt.plot(range(len(training_metrics["valid_loss"])), training_metrics["valid_loss"], label='valid_loss', color='blue')
         if not plt.gca().get_title(): 
             plt.title("train_loss VS valid_loss")
             plt.xlabel('Epochs')
@@ -238,8 +239,8 @@ class TrainTestEval():
             plt.legend()
 
         plt.subplot(1, 2, 2)
-        plt.plot(range(len(self.training_metrics["train_acc"])), self.training_metrics["train_acc"], label='train_acc', color='red')
-        plt.plot(range(len(self.training_metrics["valid_acc"])), self.training_metrics["valid_acc"], label='valid_acc', color='blue')
+        plt.plot(range(len(training_metrics["train_acc"])), training_metrics["train_acc"], label='train_acc', color='red')
+        plt.plot(range(len(training_metrics["valid_acc"])), training_metrics["valid_acc"], label='valid_acc', color='blue')
         if not plt.gca().get_title(): 
             plt.title("train_acc VS valid_acc")
             plt.xlabel('Epochs')
@@ -250,8 +251,7 @@ class TrainTestEval():
         plt.draw()
         plt.pause(0.5)
         
-    def inference(self, test_dataloader:DataLoader=None):
-        test_dataloader = self.test_dataloader if test_dataloader is None else test_dataloader
+    def inference(self, test_dataloader:DataLoader):
         # Model in eval mode
         self.model.eval()
         # Setup test loss and accuracy 

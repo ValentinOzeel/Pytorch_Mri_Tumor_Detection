@@ -8,7 +8,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 
 import torch 
-from torch.utils.data import DataLoader, Dataset, random_split, SubsetRandomSampler
+from torch.utils.data import DataLoader, Dataset, Subset, random_split, SubsetRandomSampler
 from torchvision import datasets, transforms
 
 from secondary_module import color_print
@@ -90,20 +90,11 @@ class LoadOurData():
                                   'valid':None,
                                   'test' :None}
  
-        self.cross_valid_datasets = {'train': List[Dataset], 'valid': List[Dataset]}       
-        self.cross_valid_dataloaders = {'train': List[DataLoader], 'valid': List[DataLoader]}
-        self.cross_valid_datasets_metadata = defaultdict()
+        self.cv = False
+        self.cross_valid_datasets = {'train': [], 'valid': []}       
+        self.cross_valid_dataloaders = {'train': [], 'valid': []}
+        self.cross_valid_datasets_metadata = {'train': {}, 'valid': {}}
              
-        '''
-        After running load_data method we will have the 
-        following attributes for each dataset_type:
-
-        self.{DATASET_TYPE}_dataset
-        self.{DATASET_TYPE}_dataloader
-        self.{DATASET_TYPE}_len
-        self.{DATASET_TYPE}_classes
-        self.{DATASET_TYPE}_class_to_idx
-        '''
 
     def get_original_dataset(self, transform:transforms=None, target_transform:transforms=None):
         return self.DatasetClass(root=self.data_dir, transform=transform, target_transform=target_transform)
@@ -138,7 +129,7 @@ class LoadOurData():
 
 
         
-    def print_dataset_info(self, datasets_types:List[str]=['train', 'valid', 'test'], kf:bool=None,
+    def print_dataset_info(self, datasets_types:List[str]=['train', 'valid', 'test'], n_splits=None,
                                  dataset_color = {'train':'LIGHTRED_EX', 'valid':'LIGHTYELLOW_EX', 'test':'LIGHTMAGENTA_EX'}):
         '''
         If kf is not assigned: Print metadata of train, valid and test datasets (no cv)
@@ -146,7 +137,7 @@ class LoadOurData():
         '''
         print(color_print("---------- DATASETS INFO ----------", "LIGHTGREEN_EX"))
         
-        print(color_print("\nAll classes/labels: \n", "BLUE"), self.class_to_idx)
+        print(color_print("\nAll classes/labels: ", "BLUE"), self.class_to_idx, '\n')
     
         for dataset_type in datasets_types:
             if self.datasets_metadata.get(dataset_type) is not None:
@@ -156,8 +147,8 @@ class LoadOurData():
                     color_print("\nImages per class: ", "LIGHTBLUE_EX"), self.datasets_metadata[dataset_type]['count_per_class'], '\n'     
                 )        
         
-        if kf:
-            for i in range(kf.get_n_splits()):
+        if n_splits:
+            for i in range(n_splits):
                 # Print info for train and valid datasets for each cross-validation fold
                 for dataset_type in self.cross_valid_datasets:
                     print(
@@ -187,6 +178,7 @@ class LoadOurData():
 
 
     def generate_cv_datasets(self, kf):
+        self.cv = True
         for train_idx, valid_idx in kf.split(self.train_dataset):
             self.cross_valid_datasets['train'].append(torch.utils.data.Subset(self.train_dataset, train_idx))
             self.cross_valid_datasets['valid'].append(torch.utils.data.Subset(self.train_dataset, valid_idx))
@@ -231,25 +223,28 @@ class LoadOurData():
         if isinstance(RANDOM_SEED, int): 
             random.seed(RANDOM_SEED)
 
-        dataset = getattr(self, ''.join([dataset_type.lower(), '_dataset']))
-        classes = getattr(self, ''.join([dataset_type.lower(), '_classes']))
-        # Get random indexes in the range 0 - length dataset
-        random_idxs = random.sample(range(len(dataset)), k=n)
+        # Get dataset or first dataset if cv as well as classes
+        dataloader = getattr(self, ''.join([dataset_type.lower(), '_dataloader'])) if not self.cv else self.cross_valid_dataloaders[dataset_type][0]
+        # Combine all batches into one large tensor
+        all_images_labels = torch.cat([batch for batch in dataloader], dim=0)
+        # Select n random indices
+        random_indices = torch.randperm(len(all_images_labels))[:n]
+        # Use the selected indices to extract the random images
+        random_images_labels = all_images_labels[random_indices]
         
         # Initiate plot and start interactive mode (for non blocking plot)
         plt.figure(figsize=(20, 5))
         plt.ion()
           
         # Loop over indexes and plot corresponding image
-        for i, random_index in enumerate(random_idxs):
-            image, label = dataset[random_index]
+        for i, (image, label) in enumerate(random_images_labels):
             # Adjust tensor's dimensions for plotting : Color, Height, Width -> Height, Width, Color
             image = image.permute(1, 2, 0)
             # Set up subplot (number rows in subplot, number cols in subplot, index of subplot)
             plt.subplot(1, n, i+1)
             plt.imshow(image)
             plt.axis(False)
-            plt.title(f"Class: {classes[label]}\n Shape: {image.shape}")
+            plt.title(f"Class: {self.classes[label]}\n Shape: {image.shape}")
         # Show the plot with tight layout for some time and then close the plot and deactivate interactive mode
         plt.tight_layout()
         plt.draw() 
