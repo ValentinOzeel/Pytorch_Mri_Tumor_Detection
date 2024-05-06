@@ -2,10 +2,12 @@ import os
 import yaml
 from typing import List
 import torch
-from torchvision import transforms
+from torchvision import datasets, transforms
 
 from colorama import init, Fore, Back, Style
 init() # Initialize Colorama to work on Windows
+
+from datasets import CustomImageFolder
 
 # Assuming data_exploration.py is in src\main.py
 project_root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -38,6 +40,9 @@ class ConfigLoad():
                 steps.append(transform_step()) 
         return steps
     
+    def get_dataset(self, dict_name='DATASET'):
+        return CustomImageFolder if self.config[dict_name] == 'CustomImageFolder' else getattr(datasets, self.config[dict_name])
+        
 
 def check_cuda_availability():
     is_or_is_not = 'is' if torch.cuda.is_available() else 'is not'

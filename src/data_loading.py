@@ -2,77 +2,24 @@
 import os
 import random
 from collections import defaultdict
-from pathlib import Path
 from typing import Tuple, Dict, List
-from PIL import Image 
+
 import matplotlib.pyplot as plt
 
 import torch 
-from torch.utils.data import DataLoader, Dataset, Subset, random_split, SubsetRandomSampler
+from torch.utils.data import DataLoader, Dataset, random_split, SubsetRandomSampler
 from torchvision import datasets, transforms
 
 from secondary_module import color_print
+from splitted_datasets import SplittedDataset
 
-class CustomImageFolder(Dataset):
-    '''
-    Inherit from torch.utils.data.Dataset to create custom Dataset that replicate ImageFolder (torchvision.datasets.ImageFolder)
-    '''
-    def __init__(self,
-                 root: str,
-                 transform: List = None,
-                 target_transform = None):
-        
-        self.root = root
-        if not os.path.exists(self.root): raise FileNotFoundError(f"The root path is not valid: {self.root}")
-        self.transform = transform
-        self.target_transform = target_transform
-        # All .jpg images in root dir (expect following path format: root/class/image.jpg)
-        self.all_img_paths_in_root = list(Path(self.root).glob("*/*.jpg"))
-        # Run get_classes method during initialization to get self.classes and self.classes_dict
-        self.classes, self.class_to_idx = self.get_classes()
-
-    def get_classes(self) -> Tuple[List[str], Dict[str, int]]:
-        # Get the class names (dir names in self.root)
-        classes = sorted([entry.name for entry in list(os.scandir(self.root)) if entry.is_dir()])
-        # Get the dict of classes and associated labels
-        class_to_idx = {this_class:label for label, this_class in enumerate(classes)}
-        return classes, class_to_idx
-    
-    def load_image(self, index: int):
-        return Image.open(self.all_img_paths_in_root[index])
-    
-    def convert_mode_L_to_RGB(self, image):
-        # Convert to RGB if the mode is not already RGB
-        return image.convert('RGB') if image.mode != 'RGB' else image
-
-    def __len__(self) -> int:
-        # Overwrite Dataset's __len__ method with the len of the list of all .jpg file found in root dir
-        return len(self.all_img_paths_in_root)
-    
-    def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
-        # Overwrite Dataset's __getitem__ method to return one data sample (data, label) potentially transformed
-        image = self.load_image(index)
-        image = self.convert_mode_L_to_RGB(image)
-        image_class = self.all_img_paths_in_root[index].parent.name
-        class_label = self.class_to_idx[image_class]
-        
-        image = self.transform(image) if self.transform else image 
-
-        class_label = self.target_transform(class_label) if self.target_transform else class_label
-        return image, class_label
-        
- 
- 
- 
- 
- 
- 
    
 class LoadOurData():
     def __init__(self, data_dir, DatasetClass:Dataset, random_seed=None):
         
         self.data_dir = data_dir
         self.DatasetClass = DatasetClass
+        
         
         self.original_dataset = self.get_original_dataset()
         self.classes = self.original_dataset.classes
@@ -99,6 +46,10 @@ class LoadOurData():
     def get_original_dataset(self, transform:transforms=None, target_transform:transforms=None):
         return self.DatasetClass(root=self.data_dir, transform=transform, target_transform=target_transform)
 
+    def create_splitted_dataset(self, dataset, transform):
+        # This class is for splitted datasets (so that they can carry out the transformations)
+        # Enable to apply various transform to different dataset that has been splitted from an initial dataset
+        return SplittedDataset(dataset, transform)
 
     def train_test_split(self, train_size:float):
         if not train_size >= 0 and not train_size <= 1: raise ValueError('train_size must be comprised between 0 and 1.')
@@ -109,10 +60,11 @@ class LoadOurData():
         self.train_dataset, self.valid_dataset = random_split(self.train_dataset, [train_size, 1-train_size])
                   
     def apply_transformations(self, dataset_transform:List[Tuple]):
-        for dataset, transform in dataset_transform:
-           # Apply the corresponding transformations to each dataset
-           dataset.transform = transform
+        #for dataset, transform in dataset_transform:
+        #    dataset = self.create_splitted_dataset(dataset, transform)
+        return [self.create_splitted_dataset(dataset, transform) for dataset, transform in dataset_transform]
 
+        
     def get_dataset_metadata(self, dataset:Dataset):
         def count_samples_per_class():     
             # Initialize a defaultdict to count samples per class
@@ -165,12 +117,13 @@ class LoadOurData():
                           num_workers=os.cpu_count(),
                           shuffle=shuffle)
          
-    def generate_dataloaders(self, BATCH_SIZE:int, dataset_types=['train', 'valid', 'test']):
+    def generate_dataloaders(self, BATCH_SIZE:int, dataset_types=['train', 'valid', 'test'], shuffle={'train':True, 'valid':False, 'test':False}):
         for dataset_type in dataset_types:
             # Create dataloader
             dataloader = self._create_dataloaders(dataset=getattr(self, ''.join([dataset_type, '_dataset'])),
                                                   BATCH_SIZE=BATCH_SIZE,
-                                                  shuffle=True)
+                                                  shuffle=shuffle[dataset_type])
+
             # Set dataloader as attribute
             setattr(self, ''.join([dataset_type, '_dataloader']), dataloader)
 
@@ -225,19 +178,40 @@ class LoadOurData():
 
         # Get dataset or first dataset if cv as well as classes
         dataloader = getattr(self, ''.join([dataset_type.lower(), '_dataloader'])) if not self.cv else self.cross_valid_dataloaders[dataset_type][0]
-        # Combine all batches into one large tensor
-        all_images_labels = torch.cat([batch for batch in dataloader], dim=0)
-        # Select n random indices
-        random_indices = torch.randperm(len(all_images_labels))[:n]
-        # Use the selected indices to extract the random images
-        random_images_labels = all_images_labels[random_indices]
+
+        # Get the length of the DataLoader (number of samples)
+        dataset_size = len(dataloader.dataset)
+        # Define the indices of the dataset
+        indices = list(range(dataset_size))
+        # Shuffle the indices
+        random.shuffle(indices)
+        # Select 6 random indices
+        random_indices = indices[:6]
+        # Create a SubsetRandomSampler using the selected indices
+        sampler = SubsetRandomSampler(random_indices)
+
+        # Create a new DataLoader with the SubsetRandomSampler
+        random_dataloader = DataLoader(
+            dataset=dataloader.dataset,
+            batch_size=1,  # You can set batch size as 1 if you want individual samples
+            sampler=sampler
+        ) 
+ 
+ 
+     #   # Combine all batches into one large tensor
+     #   all_images_labels = torch.cat([batch for batch in dataloader], dim=0)
+     #   # Select n random indices
+     #   random_indices = torch.randperm(len(all_images_labels))[:n]
+     #   # Use the selected indices to extract the random images
+     #   random_images_labels = all_images_labels[random_indices]
         
         # Initiate plot and start interactive mode (for non blocking plot)
         plt.figure(figsize=(20, 5))
         plt.ion()
           
         # Loop over indexes and plot corresponding image
-        for i, (image, label) in enumerate(random_images_labels):
+        for i, (image, label) in enumerate(random_dataloader):
+            image = image.squeeze(dim=1)
             # Adjust tensor's dimensions for plotting : Color, Height, Width -> Height, Width, Color
             image = image.permute(1, 2, 0)
             # Set up subplot (number rows in subplot, number cols in subplot, index of subplot)

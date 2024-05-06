@@ -1,5 +1,7 @@
 RANDOM_SEED: null
 
+DATASET: CustomImageFolder
+
 DATA_LOADER:
   BATCH_SIZE: 16
 

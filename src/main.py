@@ -7,7 +7,8 @@ from sklearn.model_selection import KFold
 
 from timeit import default_timer as timer
 
-from data_loading import LoadOurData, CustomImageFolder
+from data_loading import LoadOurData
+from datasets import CustomImageFolder
 from secondary_module import ConfigLoad, check_cuda_availability, color_print
 from model import MRINeuralNet, TrainTestEval
 
@@ -18,15 +19,10 @@ from model import MRINeuralNet, TrainTestEval
 class Main():
     def __init__(self,
                  data_dir,
-                 dataset_class = datasets.ImageFolder,
                  train_test_split = 0.9,
                  random_seed=None,
                  ):
         
-        # Load original as well as train/test datasets
-        self.load = LoadOurData(data_dir, dataset_class)
-        self.load.train_test_split(train_test_split)
-
         self.random_seed = random_seed
     
         # Get config data     
@@ -34,6 +30,10 @@ class Main():
         self.config = self.config_load.get_config()
         
         self.train_transform, self.test_transform = self._get_transforms()
+
+        # Load original as well as train/test datasets
+        self.load = LoadOurData(data_dir, self.config_load.get_dataset())
+        self.load.train_test_split(train_test_split)
     
     
     def _get_transforms(self):
@@ -53,6 +53,18 @@ class Main():
         if not cv:
             # Split train_dataset into train_dataset and valid_dataset
             self.load.train_valid_split(train_size=train_size)
+
+            
+            self.load.train_dataset, self.load.valid_dataset, self.load.test_dataset = self.load.apply_transformations(dataset_transform=[(self.load.train_dataset, self.train_transform), 
+                                                                                                                                          (self.load.valid_dataset, self.train_transform), 
+                                                                                                                                          (self.load.test_dataset,  self.test_transform)])
+#
+   #         self.load.apply_transformations(dataset_transform=[(self.load.train_dataset, self.train_transform), 
+   #                                                            (self.load.valid_dataset, self.train_transform), 
+   #                                                            (self.load.test_dataset,  self.test_transform)])
+
+            self.load.generate_dataloaders(BATCH_SIZE=self.config['DATA_LOADER']['BATCH_SIZE'])
+            
             # Store datasets' metadata (len, count_per_class)
             for dataset_type, dataset in [('train', self.load.train_dataset), 
                                           ('valid', self.load.valid_dataset), 
@@ -60,12 +72,7 @@ class Main():
                 self.load.datasets_metadata[dataset_type] = self.load.get_dataset_metadata(dataset)
                 
             if verbose: self.load.print_dataset_info()
-            
-            self.load.apply_transformations(dataset_transform=[(self.load.train_dataset, self.train_transform), 
-                                                               (self.load.valid_dataset, self.train_transform), 
-                                                               (self.load.test_dataset,  self.test_transform)])
-
-            self.load.generate_dataloaders(BATCH_SIZE=self.config['DATA_LOADER']['BATCH_SIZE'])
+                
             
         else:            
             # Store train and test datasets' metadata (len, count_per_class)
@@ -110,16 +117,14 @@ if __name__ == "__main__":
     project_root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     data_dir = os.path.join(project_root_path, 'data')
     
-    dl = Main(data_dir,
-              dataset_class = datasets.ImageFolder,
-              train_test_split = 0.85)
+    dl = Main(data_dir, train_test_split = 0.85)
     
+    # Load data into datasets and dataloaders
+    # _______________
     #dl.load_data(cv=5)
     dl.load_data()
     
-    # Create DataLoaders to load images per in batches
-    # _______________
-    dl.load.generate_dataloaders(BATCH_SIZE = dl.config['DATA_LOADER']['BATCH_SIZE'])
+
     # Get one iteration of train_dataloader (loading in batches)
     img_batch, label_batch = next(iter(dl.load.train_dataloader))
     #img_batch, label_batch = next(iter(dl.load.cross_valid_dataloaders['train']))
