@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 from typing import Tuple, Dict, List
-
 from PIL import Image 
 
 import torch

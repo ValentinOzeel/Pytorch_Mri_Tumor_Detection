@@ -15,32 +15,38 @@ from splitted_datasets import SplittedDataset
 
    
 class LoadOurData():
-    def __init__(self, data_dir, DatasetClass:Dataset, random_seed=None):
+    def __init__(self, data_dir, DatasetClass:Dataset, RANDOM_SEED:int=None, 
+                 initial_transform:transforms=None, initial_target_transform:transforms=None, inference:bool=False):
         
         self.data_dir = data_dir
         self.DatasetClass = DatasetClass
-        
-        
-        self.original_dataset = self.get_original_dataset()
-        self.classes = self.original_dataset.classes
-        self.class_to_idx = self.original_dataset.class_to_idx
 
-        self.train_dataset=None
-        self.valid_dataset=None
-        self.test_dataset=None
+        if isinstance(RANDOM_SEED, int): 
+            random.seed(RANDOM_SEED)
+            torch.manual_seed(RANDOM_SEED)
         
-        self.train_dataloader=None
-        self.valid_dataloader=None
-        self.test_dataloader=None
+        self.original_dataset = self.get_original_dataset(initial_transform, initial_target_transform)
         
-        self.datasets_metadata = {'train':None,
-                                  'valid':None,
-                                  'test' :None}
- 
-        self.cv = False
-        self.cross_valid_datasets = {'train': [], 'valid': []}       
-        self.cross_valid_dataloaders = {'train': [], 'valid': []}
-        self.cross_valid_datasets_metadata = {'train': {}, 'valid': {}}
+        if not inference:
+            self.classes = self.original_dataset.classes
+            self.class_to_idx = self.original_dataset.class_to_idx
+
+            self.train_dataset=None
+            self.valid_dataset=None
+            self.test_dataset=None
+
+            self.train_dataloader=None
+            self.valid_dataloader=None
+            self.test_dataloader=None
+
+            self.datasets_metadata = {'train':None,
+                                      'valid':None,
+                                      'test' :None}
+    
+            self.cv = False
+            self.cross_valid_datasets = {'train': [], 'valid': []}       
+            self.cross_valid_dataloaders = {'train': [], 'valid': []}
+            self.cross_valid_datasets_metadata = {'train': {}, 'valid': {}}
              
 
     def get_original_dataset(self, transform:transforms=None, target_transform:transforms=None):
@@ -110,7 +116,7 @@ class LoadOurData():
                     )  
         
         
-    def _create_dataloaders(self, dataset, BATCH_SIZE:int, sampler=None, shuffle:bool=True) -> DataLoader:
+    def create_dataloaders(self, dataset, BATCH_SIZE:int, sampler=None, shuffle:bool=True) -> DataLoader:
         return DataLoader(dataset=dataset,
                           batch_size=BATCH_SIZE,
                           sampler=sampler,
@@ -120,7 +126,7 @@ class LoadOurData():
     def generate_dataloaders(self, BATCH_SIZE:int, dataset_types=['train', 'valid', 'test'], shuffle={'train':True, 'valid':False, 'test':False}):
         for dataset_type in dataset_types:
             # Create dataloader
-            dataloader = self._create_dataloaders(dataset=getattr(self, ''.join([dataset_type, '_dataset'])),
+            dataloader = self.create_dataloaders(dataset=getattr(self, ''.join([dataset_type, '_dataset'])),
                                                   BATCH_SIZE=BATCH_SIZE,
                                                   shuffle=shuffle[dataset_type])
 
@@ -141,13 +147,13 @@ class LoadOurData():
     def generate_cv_dataloaders(self, BATCH_SIZE:int):
         
         for train_dataset, valid_dataset in zip(self.cross_valid_datasets['train'], self.cross_valid_datasets['valid']):
-            self.cross_valid_dataloaders['train'].append(self._create_dataloaders(
+            self.cross_valid_dataloaders['train'].append(self.create_dataloaders(
                                                                     dataset=train_dataset,
                                                                     BATCH_SIZE=BATCH_SIZE,
                                                                     shuffle=True)
                                                     )
 
-            self.cross_valid_dataloaders['valid'].append(self._create_dataloaders(
+            self.cross_valid_dataloaders['valid'].append(self.create_dataloaders(
                                                                     dataset=valid_dataset,
                                                                     BATCH_SIZE=BATCH_SIZE,
                                                                     shuffle=True)
@@ -163,47 +169,27 @@ class LoadOurData():
     
     
     
-    
-    
-    
-    def show_random_images(self,
-                           RANDOM_SEED:int = None,
-                           dataset_type:str = 'train',
-                           n:int = 6,
-                           display_seconds:int= 30
-                           ):
-        
-        if isinstance(RANDOM_SEED, int): 
-            random.seed(RANDOM_SEED)
-
-        # Get dataset or first dataset if cv as well as classes
-        dataloader = getattr(self, ''.join([dataset_type.lower(), '_dataloader'])) if not self.cv else self.cross_valid_dataloaders[dataset_type][0]
-
-        # Get the length of the DataLoader (number of samples)
-        dataset_size = len(dataloader.dataset)
-        # Define the indices of the dataset
-        indices = list(range(dataset_size))
+    def _get_random_images_dataloader(self, dataloader:DataLoader, n:int):
+        # Get the length of the DataLoader (number of samples) and define the indices of the dataset
+        indices = list(range(len(dataloader.dataset)))
         # Shuffle the indices
         random.shuffle(indices)
         # Select 6 random indices
-        random_indices = indices[:6]
-        # Create a SubsetRandomSampler using the selected indices
-        sampler = SubsetRandomSampler(random_indices)
-
-        # Create a new DataLoader with the SubsetRandomSampler
-        random_dataloader = DataLoader(
+        random_indices = indices[:n]
+        # Create and return a new DataLoader with the SubsetRandomSampler
+        return DataLoader(
             dataset=dataloader.dataset,
-            batch_size=1,  # You can set batch size as 1 if you want individual samples
-            sampler=sampler
+            batch_size=1,
+            sampler=SubsetRandomSampler(random_indices) # sampler is a SubsetRandomSampler using the selected indices
         ) 
- 
- 
-     #   # Combine all batches into one large tensor
-     #   all_images_labels = torch.cat([batch for batch in dataloader], dim=0)
-     #   # Select n random indices
-     #   random_indices = torch.randperm(len(all_images_labels))[:n]
-     #   # Use the selected indices to extract the random images
-     #   random_images_labels = all_images_labels[random_indices]
+    
+    def show_random_images(self,
+                           dataloader:DataLoader,
+                           n:int = 6,
+                           display_seconds:int= 30
+                           ):
+        # Get random images (in the form of a dataloader)
+        random_dataloader = self._get_random_images_dataloader(dataloader, n)
         
         # Initiate plot and start interactive mode (for non blocking plot)
         plt.figure(figsize=(20, 5))
@@ -211,7 +197,8 @@ class LoadOurData():
           
         # Loop over indexes and plot corresponding image
         for i, (image, label) in enumerate(random_dataloader):
-            image = image.squeeze(dim=1)
+            # Remove the batch dimension (which is 1)
+            image = image.squeeze(0)
             # Adjust tensor's dimensions for plotting : Color, Height, Width -> Height, Width, Color
             image = image.permute(1, 2, 0)
             # Set up subplot (number rows in subplot, number cols in subplot, index of subplot)

@@ -6,6 +6,8 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 
+from torchinfo import summary
+
 from secondary_module import ConfigLoad
 from secondary_module import color_print
 
@@ -19,22 +21,16 @@ class MRINeuralNet(nn.Module):
                  input_shape:Tuple[int],
                  hidden_units:int,
                  output_shape:int,
-                 RANDOM_SEED: int = None,
-                 device: str = "cuda" if torch.cuda.is_available() else "cpu"
                  ):
         
         super().__init__()
         
-        # Set-up device agnostic model
-        self.to(device)
-        
         self.input_shape = input_shape # [n_images, color_channels, height, width]
         self.hidden_units = hidden_units
         self.output_shape = output_shape # Number of classes
-        
-        if RANDOM_SEED is not None:
-            torch.manual_seed(RANDOM_SEED)
-            torch.cuda.manual_seed(RANDOM_SEED)
+            
+        # Print torchinfo's model summary
+        #summary(self, input_size=self.input_shape)
         
         self.conv_1 = nn.Sequential(
             nn.Conv2d(
@@ -111,6 +107,9 @@ class TrainTestEval():
         self.loss_func = loss_func 
         self.epochs = epochs 
         self.device = device 
+        
+        # Put model on device
+        self.model.to(self.device)
         
         if RANDOM_SEED is not None:
             torch.manual_seed(RANDOM_SEED)
@@ -251,7 +250,7 @@ class TrainTestEval():
         plt.draw()
         plt.pause(0.5)
         
-    def inference(self, test_dataloader:DataLoader):
+    def evaluation(self, test_dataloader:DataLoader):
         # Model in eval mode
         self.model.eval()
         # Setup test loss and accuracy 
@@ -283,3 +282,25 @@ class TrainTestEval():
         )
                 
         return test_loss, test_acc
+
+
+    def inference(self, dataloader:DataLoader):
+        # Model in eval mode
+        self.model.eval()
+
+        pred_logits, pred_classes = [], []
+        # Inference mode (not to compute gradient)
+        with torch.inference_mode():
+            # Loop over batches
+            for i, (imgs, _) in enumerate(dataloader):
+                # Set data to device
+                imgs = imgs.to(self.device)
+                # Forward pass
+                pred_logit = self.model(imgs)
+                # Get predicted classes
+                predicted_classes = pred_logit.argmax(dim=1)
+                # Extend predictions lists
+                pred_logits.extend(pred_logit)
+                pred_classes.extend(predicted_classes)
+   
+        return pred_logits, pred_classes
