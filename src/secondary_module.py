@@ -1,6 +1,6 @@
 import os 
 import yaml
-from typing import List
+from typing import List, Dict
 import torch
 from torchvision import datasets, transforms
 
@@ -23,7 +23,8 @@ class ConfigLoad():
     def get_config(self):
         return self.config
             
-    def get_transform_steps(self, dict_name='DATA_TRANSFORM_AND_AUGMENTATION', dataset_type='train') -> List:
+    def get_transform_steps(self, dict_name='DATA_TRANSFORM_AND_AUGMENTATION', dataset_type='train', 
+                            normalize_params:Dict=None) -> List:
         '''
         Access transformation dict defined in config
         Transform it as a list of torchvision.transforms steps
@@ -36,6 +37,8 @@ class ConfigLoad():
             # Initialize the transform method with its defined parameters and append in list
             if params: 
                 steps.append(transform_step(**params))
+            elif step_name.lower() == 'normalize':
+                steps.append(transform_step(**normalize_params))
             else:
                 steps.append(transform_step()) 
         return steps

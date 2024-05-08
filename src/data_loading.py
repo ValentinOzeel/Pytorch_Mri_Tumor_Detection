@@ -1,6 +1,7 @@
 # Data transformation (into tensor and torch.utils.data.Dataset -> torch.utils.data.DataLoader)
 import os
 import random
+import copy
 from collections import defaultdict
 from typing import Tuple, Dict, List
 
@@ -16,7 +17,8 @@ from splitted_datasets import SplittedDataset
    
 class LoadOurData():
     def __init__(self, data_dir, DatasetClass:Dataset, RANDOM_SEED:int=None, 
-                 initial_transform:transforms=None, initial_target_transform:transforms=None, inference:bool=False):
+                 initial_transform:transforms=None, initial_target_transform:transforms=None, 
+                 inference:bool=False):
         
         self.data_dir = data_dir
         self.DatasetClass = DatasetClass
@@ -47,23 +49,70 @@ class LoadOurData():
             self.cross_valid_datasets = {'train': [], 'valid': []}       
             self.cross_valid_dataloaders = {'train': [], 'valid': []}
             self.cross_valid_datasets_metadata = {'train': {}, 'valid': {}}
+            
+            # Mean and std are computed based on training dataset for dataset normalization
+            self.mean = None 
+            self.std = None
              
 
     def get_original_dataset(self, transform:transforms=None, target_transform:transforms=None):
-        return self.DatasetClass(root=self.data_dir, transform=transform, target_transform=target_transform)
+        return self.DatasetClass(root=self.data_dir, transform=transform, target_transform=target_transform) if self.data_dir else None
+    
+    def calculate_normalization(self, batch_size:int=8, resize=(224, 224)):
+        if not self.train_dataset: 
+            raise ValueError('Normalization should be calculated on training dataset, but there is no self.train_dataset initiated.')
+        
+        # Compute the mean and standard deviation of the pixel values across all images in your dataset
+        
+        aug = transforms.Compose([
+            transforms.Resize(resize),       # Resize the images to a fixed size
+            transforms.ToTensor(),           # Convert the images to PyTorch tensors
+        ])
+        
+        dataset = copy.deepcopy(self.train_dataset)
+        list_transformed = self.apply_transformations([(dataset, aug)])
+        dataset = list_transformed[0]
+        # Define your dataset and DataLoader
+        dataloader = DataLoader(dataset,
+                                batch_size=batch_size, shuffle=True)
+
+        # Calculate mean and standard deviation
+        self.mean, self.std, total_samples = 0, 0, 0
+
+        # Iterate through the DataLoader to calculate mean and std
+        for images, _ in dataloader:
+            # Get the batch size
+            batch_samples = images.size(0)
+            # Flatten the images to calculate mean and std across all pixels
+            images = images.view(batch_samples, images.size(1), -1)
+            # Calculate mean and std across all pixels and channels (second dimension now represents all pixels for each channel)
+            self.mean += images.mean(2).sum(0)
+            self.std += images.std(2).sum(0)
+            # Count the total number of samples
+            total_samples += batch_samples
+
+        # Calculate the mean and std across the entire dataset
+        self.mean /= total_samples
+        self.std /= total_samples
+        
+        #print('mean =', self.mean, ' ||| ' 'std =', self.std )
+        return {'mean':self.mean, 'std':self.std}
+
 
     def create_splitted_dataset(self, dataset, transform):
         # This class is for splitted datasets (so that they can carry out the transformations)
         # Enable to apply various transform to different dataset that has been splitted from an initial dataset
-        return SplittedDataset(dataset, transform)
+        return SplittedDataset(dataset, transform) if dataset else None
 
-    def train_test_split(self, train_size:float):
-        if not train_size >= 0 and not train_size <= 1: raise ValueError('train_size must be comprised between 0 and 1.')
-        self.train_dataset, self.test_dataset = random_split(self.original_dataset, [train_size, 1-train_size])
+
+    def train_test_split(self, train_ratio:float):
+        if not train_ratio >= 0 and not train_ratio <= 1: raise ValueError('train_size must be comprised between 0 and 1.')
+        self.train_dataset, self.test_dataset = random_split(self.original_dataset, [train_ratio, 1-train_ratio])
     
-    def train_valid_split(self, train_size:float):
-        if not train_size >= 0 and not train_size <= 1: raise ValueError('train_size must be comprised between 0 and 1.')
-        self.train_dataset, self.valid_dataset = random_split(self.train_dataset, [train_size, 1-train_size])
+    def train_valid_split(self, train_ratio:float):
+        if not train_ratio >= 0 and not train_ratio <= 1: raise ValueError('train_size must be comprised between 0 and 1.')
+        dataset = self.original_dataset if not self.test_dataset else self.train_dataset
+        self.train_dataset, self.valid_dataset = random_split(dataset, [train_ratio, 1-train_ratio])
                   
     def apply_transformations(self, dataset_transform:List[Tuple]):
         #for dataset, transform in dataset_transform:
@@ -82,7 +131,7 @@ class LoadOurData():
                 samples_per_class[img_class] += 1
             return samples_per_class
         
-        return {'length':len(dataset), 'count_per_class':count_samples_per_class()}
+        return {'length':len(dataset), 'count_per_class':count_samples_per_class()} if dataset else None
 
 
 
@@ -116,22 +165,29 @@ class LoadOurData():
                     )  
         
         
-    def create_dataloaders(self, dataset, BATCH_SIZE:int, sampler=None, shuffle:bool=True) -> DataLoader:
+    def create_dataloaders(self, dataset, BATCH_SIZE:int, num_workers:int, pin_memory:bool, sampler=None, shuffle:bool=True,
+                           ) -> DataLoader:
         return DataLoader(dataset=dataset,
                           batch_size=BATCH_SIZE,
                           sampler=sampler,
-                          num_workers=os.cpu_count(),
-                          shuffle=shuffle)
+                          num_workers=num_workers,
+                          shuffle=shuffle,
+                          pin_memory=pin_memory)
          
-    def generate_dataloaders(self, BATCH_SIZE:int, dataset_types=['train', 'valid', 'test'], shuffle={'train':True, 'valid':False, 'test':False}):
+    def generate_dataloaders(self, BATCH_SIZE:int, dataset_types=['train', 'valid', 'test'], shuffle={'train':True, 'valid':False, 'test':False},
+                             num_workers=os.cpu_count(), pin_memory=True):
         for dataset_type in dataset_types:
             # Create dataloader
-            dataloader = self.create_dataloaders(dataset=getattr(self, ''.join([dataset_type, '_dataset'])),
-                                                  BATCH_SIZE=BATCH_SIZE,
-                                                  shuffle=shuffle[dataset_type])
+            dataset=getattr(self, ''.join([dataset_type, '_dataset']))
+            if dataset:
+                dataloader = self.create_dataloaders(dataset=dataset,
+                                                     BATCH_SIZE=BATCH_SIZE,
+                                                     num_workers=num_workers,
+                                                     pin_memory=pin_memory,
+                                                     shuffle=shuffle[dataset_type])
 
-            # Set dataloader as attribute
-            setattr(self, ''.join([dataset_type, '_dataloader']), dataloader)
+                # Set dataloader as attribute
+                setattr(self, ''.join([dataset_type, '_dataloader']), dataloader)
 
 
 
@@ -144,30 +200,27 @@ class LoadOurData():
             
 
 
-    def generate_cv_dataloaders(self, BATCH_SIZE:int):
+    def generate_cv_dataloaders(self, BATCH_SIZE:int, num_workers=os.cpu_count(), pin_memory=True):
         
         for train_dataset, valid_dataset in zip(self.cross_valid_datasets['train'], self.cross_valid_datasets['valid']):
             self.cross_valid_dataloaders['train'].append(self.create_dataloaders(
                                                                     dataset=train_dataset,
                                                                     BATCH_SIZE=BATCH_SIZE,
+                                                                    num_workers=num_workers,
+                                                                    pin_memory=pin_memory,
                                                                     shuffle=True)
                                                     )
 
             self.cross_valid_dataloaders['valid'].append(self.create_dataloaders(
                                                                     dataset=valid_dataset,
                                                                     BATCH_SIZE=BATCH_SIZE,
+                                                                    num_workers=num_workers,
+                                                                    pin_memory=pin_memory,
                                                                     shuffle=True)
                                                     )
                                                                 
                               
-
-    
-    
-    
-    
-    
-    
-    
+                              
     
     def _get_random_images_dataloader(self, dataloader:DataLoader, n:int):
         # Get the length of the DataLoader (number of samples) and define the indices of the dataset
@@ -182,11 +235,22 @@ class LoadOurData():
             batch_size=1,
             sampler=SubsetRandomSampler(random_indices) # sampler is a SubsetRandomSampler using the selected indices
         ) 
-    
+
+         
+    def inverse_normalize_img(self, tensor, mean, std):
+        # Ensures mean and std compatibility with image tensors three dimensions (channels, height, and width)
+        if mean.ndim == 1:
+            mean = mean.view(-1, 1, 1)
+        if std.ndim == 1:
+            std = std.view(-1, 1, 1)
+        return tensor * std + mean
+
+
     def show_random_images(self,
                            dataloader:DataLoader,
                            n:int = 6,
-                           display_seconds:int= 30
+                           display_seconds:int= 30,
+                           unnormalize:bool=False
                            ):
         # Get random images (in the form of a dataloader)
         random_dataloader = self._get_random_images_dataloader(dataloader, n)
@@ -194,11 +258,14 @@ class LoadOurData():
         # Initiate plot and start interactive mode (for non blocking plot)
         plt.figure(figsize=(20, 5))
         plt.ion()
-          
+
         # Loop over indexes and plot corresponding image
         for i, (image, label) in enumerate(random_dataloader):
             # Remove the batch dimension (which is 1)
             image = image.squeeze(0)
+            if unnormalize:
+                # Unnormalize image
+                image = self.inverse_normalize_img(image, self.mean, self.std)
             # Adjust tensor's dimensions for plotting : Color, Height, Width -> Height, Width, Color
             image = image.permute(1, 2, 0)
             # Set up subplot (number rows in subplot, number cols in subplot, index of subplot)
@@ -221,175 +288,3 @@ class LoadOurData():
  
  
  
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
-# 
-#    
-#class LoadOurData():
-#    def __init__(self, data_dir, DatasetClass:Dataset):
-#        
-#        self.data_dir = data_dir
-#        self.DatasetClass = DatasetClass
-#
-#        self.dataset_types = ['train', 'valid', 'test']
-#        
-#        
-#        '''
-#        After running load_data method we will have the 
-#        following attributes for each dataset_type:
-#
-#        self.{DATASET_TYPE}_dataset
-#        self.{DATASET_TYPE}_dataloader
-#        self.{DATASET_TYPE}_len
-#        self.{DATASET_TYPE}_classes
-#        self.{DATASET_TYPE}_class_to_idx
-#        '''
-#
-#
-#    def count_samples_per_class(self, dataset: Dataset, dataset_type: str):     
-#        # Initialize a defaultdict to count samples per class
-#        if dataset_type.lower() not in self.dataset_types: 
-#            raise ValueError('dataset_type should be "train", "valid" or "test".') 
-#        classes = getattr(self, ''.join([dataset_type, '_classes']))
-#        
-#        samples_per_class = defaultdict(int)
-#        # Iterate over all samples and count occurrences of each class  
-#        for _, label in dataset:
-#            img_class = classes[label]
-#            samples_per_class[img_class] += 1
-#            
-#        return samples_per_class
-#
-#        
-#    def load_data(self,                  
-#                  transform:transforms.Compose,
-#                  test_transform:transforms.Compose = None,
-#                  target_transform:transforms.Compose = None,
-#                  train_ratio:int = 0.8,
-#                  valid_ratio:int = 0.1,
-#                  test_ratio:int = 0.1,
-#                  cross_valid_kf=None
-#                  ):
-#        
-#        if sum([train_ratio, valid_ratio, test_ratio]) != 1:
-#            raise ValueError("Sum of train_ratio, valid_ratio and test_ratio must equal 1.")
-#        
-#        # Load all our data without any transform
-#        original_dataset = self.DatasetClass(root=self.data_dir, transform=None, target_transform=target_transform)
-#        
-#        if not cross_valid_kf:
-#            # Define the sizes of training, validation, and test sets
-#            train_size = int(train_ratio * len(original_dataset))
-#            valid_size = int(valid_ratio * len(original_dataset))
-#            # Set all remaining images to test dataset (to avoid leaving one image unaccounted for)
-#            test_size = len(original_dataset) - train_size - valid_size
-#            # Split the original dataset into training, validation, and test sets
-#            self.train_dataset, self.valid_dataset, self.test_dataset = random_split(original_dataset, [train_size, valid_size, test_size])
-#        
-#        #else:
-#            # MAYBE SAVE ALL THE SPLIUTTED DATASETS SO THAT WE CAN ITERATE OVER THEM LATER ON
-#
-#        # Apply the corresponding transformations to each dataset
-#        self.train_dataset.dataset.transform = transform
-#        self.valid_dataset.dataset.transform = transform
-#        self.test_dataset.dataset.transform = test_transform if test_transform is not None else transform
-#
-#        for dataset_type in self.dataset_types:
-#            # Access dataset
-#            dataset = getattr(self, ''.join([dataset_type, '_dataset']))
-#            # Calculate dataset's length
-#            setattr(self, ''.join([dataset_type, '_len']), len(dataset)) 
-#            # Get its classes (same as original dataset)
-#            setattr(self, ''.join([dataset_type, '_classes']), original_dataset.classes) 
-#            # Get its class_to_idx (same as original dataset)
-#            setattr(self, ''.join([dataset_type, '_class_to_idx']), original_dataset.class_to_idx)
-#            # Get count per class
-#            setattr(self, ''.join([dataset_type, '_count_per_class']), self.count_samples_per_class(dataset, dataset_type))
-#            
-#        return self.train_dataset, self.valid_dataset, self.test_dataset
-#     
-#        
-#    def print_info_on_loaded_data(self):
-#        print(
-#            color_print("---------- DATASETS INFO ----------", "LIGHTGREEN_EX")
-#        )
-#        
-#        for dataset_type in self.dataset_types:
-#            print(
-#                color_print(f"Info regarding {dataset_type}_dataset:", "RED"),
-#                color_print("\nLength: ", "BLUE"), getattr(self, ''.join([dataset_type, '_len'])),       
-#                color_print("\nClasses/labels: ", "BLUE"), getattr(self, ''.join([dataset_type, '_class_to_idx'])), 
-#                color_print("\nImages per class: ", "BLUE"), getattr(self, ''.join([dataset_type, '_count_per_class'])), '\n'     
-#            )
-#  
-#        
-#        
-#    def create_dataloaders(self, BATCH_SIZE:int, train_shuffle:bool=True, valid_shuffle:bool=True, test_shuffle:bool=False):
-#        shuffle = {"train":train_shuffle, "valid":valid_shuffle, "test":test_shuffle}
-#        for dataset_type in self.dataset_types:
-#            data_loader = DataLoader(dataset=getattr(self, ''.join([dataset_type, '_dataset'])),
-#                                     batch_size=BATCH_SIZE,
-#                                     num_workers=os.cpu_count(),
-#                                     shuffle=shuffle[dataset_type])
-#            setattr(self, ''.join([dataset_type, '_dataloader']), data_loader) 
-#            
-#        return self.train_dataloader, self.valid_dataloader, self.test_dataloader
-#    
-#    
-#    def show_random_images(self,
-#                           RANDOM_SEED:int = None,
-#                           dataset_type:str = 'train',
-#                           n:int = 6,
-#                           display_seconds:int= 30
-#                           ):
-#        
-#        if isinstance(RANDOM_SEED, int): 
-#            random.seed(RANDOM_SEED)
-#
-#        dataset = getattr(self, ''.join([dataset_type.lower(), '_dataset']))
-#        classes = getattr(self, ''.join([dataset_type.lower(), '_classes']))
-#        # Get random indexes in the range 0 - length dataset
-#        random_idxs = random.sample(range(len(dataset)), k=n)
-#        
-#        # Initiate plot and start interactive mode (for non blocking plot)
-#        plt.figure(figsize=(20, 5))
-#        plt.ion()
-#          
-#        # Loop over indexes and plot corresponding image
-#        for i, random_index in enumerate(random_idxs):
-#            image, label = dataset[random_index]
-#            # Adjust tensor's dimensions for plotting : Color, Height, Width -> Height, Width, Color
-#            image = image.permute(1, 2, 0)
-#            # Set up subplot (number rows in subplot, number cols in subplot, index of subplot)
-#            plt.subplot(1, n, i+1)
-#            plt.imshow(image)
-#            plt.axis(False)
-#            plt.title(f"Class: {classes[label]}\n Shape: {image.shape}")
-#        # Show the plot with tight layout for some time and then close the plot and deactivate interactive mode
-#        plt.tight_layout()
-#        plt.draw() 
-#        plt.pause(display_seconds)
-#        plt.ioff()
-#        plt.close()
-#        return

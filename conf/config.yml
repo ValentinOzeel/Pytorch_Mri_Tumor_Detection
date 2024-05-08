@@ -1,3 +1,7 @@
+DATA_SPLITS:
+  TRAIN_TEST_RATIO: 0.9
+  TRAIN_VALID_RATIO: 0.85
+
 RANDOM_SEED: null
 
 DATASET: CustomImageFolder
@@ -15,11 +19,12 @@ DATA_TRANSFORM_AND_AUGMENTATION:
     TrivialAugmentWide:
         num_magnitude_bins: 31
     ToTensor: {}
+    Normalize: {}
   test:
     Resize: 
         size: [224, 224]
     ToTensor: {}
-
+    Normalize: {}
 MODEL_PARAMS:
   HIDDEN_UNITS: 10
   EPOCHS: 10

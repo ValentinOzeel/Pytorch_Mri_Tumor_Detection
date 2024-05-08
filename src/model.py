@@ -6,8 +6,6 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 
-from torchinfo import summary
-
 from secondary_module import ConfigLoad
 from secondary_module import color_print
 
@@ -29,8 +27,6 @@ class MRINeuralNet(nn.Module):
         self.hidden_units = hidden_units
         self.output_shape = output_shape # Number of classes
             
-        # Print torchinfo's model summary
-        #summary(self, input_size=self.input_shape)
         
         self.conv_1 = nn.Sequential(
             nn.Conv2d(
