@@ -3,6 +3,7 @@ import torch
 from typing import Dict, List, Tuple
 from torch.utils.data import Dataset, DataLoader
 from torchvision import datasets, transforms
+from torch.optim import lr_scheduler
 
 from torchinfo import summary
 
@@ -110,8 +111,8 @@ class Main():
     def get_MRINeuralNet_instance(self, input_shape, hidden_units, output_shape):
         return MRINeuralNet(input_shape, hidden_units, output_shape)
         
-    def get_TrainTestEval_instance(self, model, OPTIMIZER, LOSS_FUNC, EPOCHS = 10):
-        return TrainTestEval(model, OPTIMIZER, LOSS_FUNC, epochs=EPOCHS, device=self.device, RANDOM_SEED=self.RANDOM_SEED)
+    def get_TrainTestEval_instance(self, model, optimizer, loss_func, epochs = 10, lr_scheduler=None):
+        return TrainTestEval(model, optimizer, loss_func, epochs=epochs, lr_scheduler=lr_scheduler, device=self.device, RANDOM_SEED=self.RANDOM_SEED)
 
     def run_cross_validation(self, TrainTestEval_instance:TrainTestEval, cross_valid_dataloaders:Dict):
         training_metrics_per_fold = TrainTestEval_instance(cross_valid_dataloaders)
@@ -195,15 +196,16 @@ if __name__ == "__main__":
     # Get hidden_units and epochs
     HIDDEN_UNITS = config['MODEL_PARAMS']['HIDDEN_UNITS']
     EPOCHS = config['MODEL_PARAMS']['EPOCHS']
+    # Define lr_scheduler obj and params
+    lr_schd_name, LR_SCHEDULER_PARAMS = config_load.get_nested_param(config['MODEL_PARAMS']['LR_SCHEDULER'])
+    LR_SCHEDULER = getattr(lr_scheduler, lr_schd_name)
 
-
-    
 
     # Load data into datasets and dataloaders
     # _______________
 
-    input_shape, labels_shape = dl.load_data(BATCH_SIZE, TRAIN_TRANSFORM, TEST_TRANSFORM=TEST_TRANSFORM, TRAIN_VALID_RATIO=TRAIN_VALID_RATIO)
-    #input_shape, labels_shape = dl.load_data_cv(BATCH_SIZE, TRAIN_TRANSFORM, TEST_TRANSFORM=TEST_TRANSFORM, TRAIN_VALID_RATIO=TRAIN_VALID_RATIO)
+    input_shape, labels_shape = dl.load_data(BATCH_SIZE, TRAIN_TRANSFORM, TEST_TRANSFORM=TEST_TRANSFORM, TRAIN_VALID_RATIO=TRAIN_VALID_RATIO, num_workers=4)
+    #input_shape, labels_shape = dl.load_data_cv(BATCH_SIZE, TRAIN_TRANSFORM, TEST_TRANSFORM=TEST_TRANSFORM, TRAIN_VALID_RATIO=TRAIN_VALID_RATIO, num_workers=6)
 
         
     # Define model 
@@ -218,11 +220,14 @@ if __name__ == "__main__":
 
 
     # Initiate TrainTestEval class instance
+    OPTIMIZER_INST = OPTIMIZER(params=base_model.parameters(), **OPTIMIZER_PARAMS)
+
     train_test_eval_inst = dl.get_TrainTestEval_instance(
                                      model = base_model,
-                                     OPTIMIZER = OPTIMIZER(params=base_model.parameters(), **OPTIMIZER_PARAMS),
-                                     LOSS_FUNC = LOSS_FUNC(),
-                                     EPOCHS = EPOCHS,
+                                     optimizer = OPTIMIZER_INST,
+                                     loss_func = LOSS_FUNC(),
+                                     epochs = EPOCHS,
+                                     lr_scheduler = LR_SCHEDULER(OPTIMIZER_INST, **LR_SCHEDULER_PARAMS),
                                     )
     
 

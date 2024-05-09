@@ -27,8 +27,17 @@ DATA_TRANSFORM_AND_AUGMENTATION:
     Normalize: {}
 MODEL_PARAMS:
   HIDDEN_UNITS: 10
-  EPOCHS: 10
+  EPOCHS: 40
+  LOSS_FUNC: CrossEntropyLoss
   OPTIMIZER: 
     Adam:
-      lr: 0.001
-  LOSS_FUNC: CrossEntropyLoss
+      lr: 0.0001
+  LR_SCHEDULER:
+    ReduceLROnPlateau:
+      mode: min
+      factor: 0.1
+      patience: 8
+
+
+
+

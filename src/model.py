@@ -86,7 +86,9 @@ class MRINeuralNet(nn.Module):
                     self.conv_1(x)
                  )
                )
-           
+#class EarlyStopping():
+#    def __init__(self, patience, ):
+            
         
 class TrainTestEval():
     def __init__(self,
@@ -94,6 +96,7 @@ class TrainTestEval():
                  optimizer: torch.optim.Optimizer,
                  loss_func: nn.Module,
                  epochs: int = 10,
+                 lr_scheduler: torch.optim.lr_scheduler=None,
                  device: str = "cuda" if torch.cuda.is_available() else "cpu",
                  RANDOM_SEED: int = None
                 ):
@@ -102,6 +105,7 @@ class TrainTestEval():
         self.optimizer = optimizer
         self.loss_func = loss_func 
         self.epochs = epochs 
+        self.lr_scheduler = lr_scheduler
         self.device = device 
         
         # Put model on device
@@ -147,7 +151,7 @@ class TrainTestEval():
         # Model in eval mode
         self.model.eval()
         # Setup valid loss and accuracy 
-        valid_loss, valid_acc = 0, 0
+        val_loss, val_acc = 0, 0
 
         # Inference mode (not to compute gradient)
         with torch.inference_mode():
@@ -156,25 +160,32 @@ class TrainTestEval():
                 # Set data to device
                 imgs, labels = imgs.to(self.device), labels.to(self.device)
                 # Forward pass
-                valid_pred_logit = self.model(imgs)
+                val_pred_logit = self.model(imgs)
                 # Calculate valid loss
-                loss = self.loss_func(valid_pred_logit, labels)
-                valid_loss += loss.item()
+                loss = self.loss_func(val_pred_logit, labels)
+                val_loss += loss.item()
                 # Calculate accuracy
-                predicted_classes = valid_pred_logit.argmax(dim=1)
-                valid_acc += ((predicted_classes==labels).sum().item()/len(predicted_classes))
+                predicted_classes = val_pred_logit.argmax(dim=1)
+                val_acc += ((predicted_classes==labels).sum().item()/len(predicted_classes))
 
         # Average metrics per batch
-        valid_loss = valid_loss / len(valid_dataloader)
-        valid_acc = valid_acc / len(valid_dataloader)
-        return valid_loss, valid_acc
+        val_loss = val_loss / len(valid_dataloader)
+        val_acc = val_acc / len(valid_dataloader)
+        return val_loss, val_acc
+    
+    def _schedule_lr(self, metric):
+        if isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+            self.lr_scheduler.step(metric)
+        else:
+            self.lr_scheduler.step()
+        print('\nLr value: ', self.optimizer.param_groups[0]['lr'])
 
     def training(self, train_dataloader:DataLoader, valid_dataloader:DataLoader, verbose: bool = True, plot_metrics:bool = True):
         # Empty dict to track metrics
         training_metrics = {"train_loss": [],
                             "train_acc": [],
-                            "valid_loss": [],
-                            "valid_acc": []
+                            "val_loss": [],
+                            "val_acc": []
                             }
 
         # Initialize plot
@@ -185,11 +196,11 @@ class TrainTestEval():
         # Loop through epochs 
         for epoch in tqdm(range(self.epochs)):
             train_loss, train_acc = self.training_step(train_dataloader)
-            valid_loss, valid_acc = self.validation_step(valid_dataloader)
+            val_loss, val_acc = self.validation_step(valid_dataloader)
 
             # Actualize result_metrics
             training_metrics["train_loss"].append(train_loss), training_metrics["train_acc"].append(train_acc)
-            training_metrics["valid_loss"].append(valid_loss), training_metrics["valid_acc"].append(valid_acc)
+            training_metrics["val_loss"].append(val_loss), training_metrics["val_acc"].append(val_acc)
             
             if verbose:
                 # Print metrics for each epoch
@@ -197,10 +208,15 @@ class TrainTestEval():
                     color_print("\nEpoch: ", "LIGHTGREEN_EX"), epoch,
                     color_print("train_loss: ", "RED"), f"{train_loss:.4f}", color_print(" | ", "LIGHTMAGENTA_EX"),
                     color_print("train_acc: ", "RED"), f"{train_acc:.4f}", color_print(" | ", "LIGHTMAGENTA_EX"),
-                    color_print("valid_loss: ", "BLUE"), f"{valid_loss:.4f}", color_print(" | ", "LIGHTMAGENTA_EX"),
-                    color_print("valid_acc: ", "BLUE"), f"{valid_acc:.4f}", color_print(" | ", "LIGHTMAGENTA_EX")
+                    color_print("val_loss: ", "BLUE"), f"{val_loss:.4f}", color_print(" | ", "LIGHTMAGENTA_EX"),
+                    color_print("val_acc: ", "BLUE"), f"{val_acc:.4f}", color_print(" | ", "LIGHTMAGENTA_EX")
                 )
 
+
+            if self.lr_scheduler:
+                self._schedule_lr(val_loss)
+                
+                
             # Plot the metrics curves
             if plot_metrics:
                 self.plot_metrics(training_metrics)
@@ -226,18 +242,18 @@ class TrainTestEval():
     def plot_metrics(self, training_metrics:Dict):       
         plt.subplot(1, 2, 1)
         plt.plot(range(len(training_metrics["train_loss"])), training_metrics["train_loss"], label='train_loss', color='red')
-        plt.plot(range(len(training_metrics["valid_loss"])), training_metrics["valid_loss"], label='valid_loss', color='blue')
+        plt.plot(range(len(training_metrics["val_loss"])), training_metrics["val_loss"], label='val_loss', color='blue')
         if not plt.gca().get_title(): 
-            plt.title("train_loss VS valid_loss")
+            plt.title("train_loss VS val_loss")
             plt.xlabel('Epochs')
             plt.ylabel('Loss')
             plt.legend()
 
         plt.subplot(1, 2, 2)
         plt.plot(range(len(training_metrics["train_acc"])), training_metrics["train_acc"], label='train_acc', color='red')
-        plt.plot(range(len(training_metrics["valid_acc"])), training_metrics["valid_acc"], label='valid_acc', color='blue')
+        plt.plot(range(len(training_metrics["val_acc"])), training_metrics["val_acc"], label='val_acc', color='blue')
         if not plt.gca().get_title(): 
-            plt.title("train_acc VS valid_acc")
+            plt.title("train_acc VS val_acc")
             plt.xlabel('Epochs')
             plt.ylabel('Accuracy')
             plt.legend()

@@ -45,6 +45,9 @@ class ConfigLoad():
     
     def get_dataset(self, dict_name='DATASET'):
         return CustomImageFolder if self.config[dict_name] == 'CustomImageFolder' else getattr(datasets, self.config[dict_name])
+    
+    def get_nested_param(self, config_dict:dict):
+        return next(iter(config_dict.items()))
         
 
 def check_cuda_availability():
