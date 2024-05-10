@@ -14,7 +14,7 @@ from timeit import default_timer as timer
 from data_loading import LoadOurData
 from datasets import CustomImageFolder
 from secondary_module import ConfigLoad, color_print, check_cuda_availability
-from model import MRINeuralNet, TrainTestEval
+from model import MRINeuralNet, EarlyStopping, TrainTestEval
 
 
 
@@ -111,8 +111,8 @@ class Main():
     def get_MRINeuralNet_instance(self, input_shape, hidden_units, output_shape):
         return MRINeuralNet(input_shape, hidden_units, output_shape)
         
-    def get_TrainTestEval_instance(self, model, optimizer, loss_func, epochs = 10, lr_scheduler=None):
-        return TrainTestEval(model, optimizer, loss_func, epochs=epochs, lr_scheduler=lr_scheduler, device=self.device, RANDOM_SEED=self.RANDOM_SEED)
+    def get_TrainTestEval_instance(self, model, optimizer, loss_func, epochs = 10, lr_scheduler=None, early_stopping=None):
+        return TrainTestEval(model, optimizer, loss_func, epochs=epochs, lr_scheduler=lr_scheduler, early_stopping=early_stopping, device=self.device, RANDOM_SEED=self.RANDOM_SEED)
 
     def run_cross_validation(self, TrainTestEval_instance:TrainTestEval, cross_valid_dataloaders:Dict):
         training_metrics_per_fold = TrainTestEval_instance(cross_valid_dataloaders)
@@ -199,6 +199,9 @@ if __name__ == "__main__":
     # Define lr_scheduler obj and params
     lr_schd_name, LR_SCHEDULER_PARAMS = config_load.get_nested_param(config['MODEL_PARAMS']['LR_SCHEDULER'])
     LR_SCHEDULER = getattr(lr_scheduler, lr_schd_name)
+    
+    if config['MODEL_PARAMS'].get('EARLY_STOPPING'):
+        EARLY_STOPPING = EarlyStopping(**config['MODEL_PARAMS']['EARLY_STOPPING'])
 
 
     # Load data into datasets and dataloaders
@@ -228,6 +231,7 @@ if __name__ == "__main__":
                                      loss_func = LOSS_FUNC(),
                                      epochs = EPOCHS,
                                      lr_scheduler = LR_SCHEDULER(OPTIMIZER_INST, **LR_SCHEDULER_PARAMS),
+                                     early_stopping = EARLY_STOPPING
                                     )
     
 

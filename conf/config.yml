@@ -37,6 +37,13 @@ MODEL_PARAMS:
       mode: min
       factor: 0.1
       patience: 8
+  EARLY_STOPPING:
+    patience: 8
+    delta: 0
+    saving_option: model
+    verbose: True
+
+
 
 
 

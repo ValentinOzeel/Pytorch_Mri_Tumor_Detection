@@ -1,3 +1,5 @@
+import os
+import numpy as np
 from typing import Tuple, Dict
 from tqdm.auto import tqdm
 
@@ -6,8 +8,7 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
 
-from secondary_module import ConfigLoad
-from secondary_module import color_print
+from secondary_module import ConfigLoad, color_print, project_root_path
 
 import matplotlib.pyplot as plt
 
@@ -86,9 +87,99 @@ class MRINeuralNet(nn.Module):
                     self.conv_1(x)
                  )
                )
-#class EarlyStopping():
-#    def __init__(self, patience, ):
+        
+        
+class EarlyStopping:
+    """Early stops the training if validation loss doesn't improve after a given patience."""
+
+    def __init__(self, 
+                 patience=7, delta=0, 
+                 save_checkpoint=True, saving_option='model', save_dir_path=project_root_path, 
+                 trace_func=print, verbose=False):
+        """
+        Args:
+            patience (int): How long to wait after last time validation loss improved.
+                            Default: 7
+            delta (float): Minimum change in the monitored quantity to qualify as an improvement.
+                            Default: 0
+            save_checkpoint (bool): Save checkpoint when improvement is detected.
+                            Default: True
+            saving_option (str): Should the class save the entire model ('model'), its dict_state ('dict_state'),
+            or should we save checkpoint using torch.onnx.export() ('onnx') for ONNX Format (ONNX is useful for deploying models to production environments or running inference on different platforms)
+                            Default: 'model' Possibilities: 'model', 'state_dict', 'onnx'
+            use_onnx (bool): 
+                            Default: False
+            save_dir_path (str): Path pointing to a dir for the checkpoint to be saved to.
+                            Default: project_root_path
+            trace_func (function): trace print function.
+                            Default: print
+            verbose (bool): If True, prints a message for each validation loss improvement.
+                            Default: False
+        """
+        self.patience = patience
+        self.delta = delta
+        self.save_checkpoint = save_checkpoint
+        self.saving_option = saving_option.lower()
+        self.save_dir_path = save_dir_path
+        self.verbose = verbose
+        self.trace_func = trace_func
+        
+        self.counter = 0
+        self.best_score = None
+        self.early_stop = False
+        self.val_loss_min = np.Inf
+        
+        if self.save_checkpoint and not os.path.exists(self.save_dir_path):
+            raise ValueError("Incorrect save_dir_path to save checkpoint when calling early_stopping.")
+        
+        if self.saving_option not in ['model', 'state_dict', 'onnx']:
+            raise ValueError("EarlyStopping class' saving_option parameter should be either 'model', 'dict_state' or 'onnx'.")
+        
+    def __call__(self, val_loss, model, input_data_onnx=None):
+        """Return self.early_stop value: True or False. Potentially save checkpoints."""
+        # input_data_onnx (Tensor or Tuple of Tensors): Needed for data signature when using ONNX. Default: None
+                            
+        score = -val_loss
+
+        if self.best_score is None:
+            self.best_score = score
+            self._save_checkpoint(val_loss, model, input_data_onnx)
+        elif score < self.best_score + self.delta:
+            self.counter += 1
+            if self.verbose:
+                self.trace_func(f'\nEarlyStopping counter: {self.counter} out of {self.patience}')
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:
+            self.best_score = score
+            self._save_checkpoint(val_loss, model, input_data_onnx)
+            self.counter = 0
             
+        return self.early_stop
+
+    def _save_checkpoint(self, val_loss, model, input_data_onnx):
+        """Saves model when validation loss decrease."""
+                
+        if self.verbose:
+            self.trace_func(
+                f'\nValidation loss decreased compared to the lowest value recorded ({self.val_loss_min:.6f} --> {val_loss:.6f}).')
+        
+        self.val_loss_min = val_loss
+            
+        if self.save_checkpoint:
+            if self.saving_option == 'onnx' and not input_data_onnx:
+                raise ValueError("kwargs[0]/input_data_onnx parameter should be assigned when calling early_stopping while using saving_option = 'onnx'.")
+        
+            if self.saving_option == 'model':
+                torch.save(model, os.path.join(self.save_dir_path, 'model.pth'))
+            elif self.saving_option == 'dict_state':
+                torch.save(model.state_dict(), os.path.join(self.save_dir_path, 'model_state.pth'))
+            else:
+                torch.onnx.export(model, input_data_onnx, os.path.join(self.save_dir_path, 'model.onnx'))
+            
+
+
+
         
 class TrainTestEval():
     def __init__(self,
@@ -97,6 +188,7 @@ class TrainTestEval():
                  loss_func: nn.Module,
                  epochs: int = 10,
                  lr_scheduler: torch.optim.lr_scheduler=None,
+                 early_stopping:EarlyStopping=None,
                  device: str = "cuda" if torch.cuda.is_available() else "cpu",
                  RANDOM_SEED: int = None
                 ):
@@ -106,6 +198,7 @@ class TrainTestEval():
         self.loss_func = loss_func 
         self.epochs = epochs 
         self.lr_scheduler = lr_scheduler
+        self.early_stopping = early_stopping
         self.device = device 
         
         # Put model on device
@@ -115,7 +208,10 @@ class TrainTestEval():
             torch.manual_seed(RANDOM_SEED)
             torch.cuda.manual_seed(RANDOM_SEED)
         
-
+    def get_dummy_input(self, dataloader:DataLoader):
+        imgs, labels = next(iter(dataloader))
+        return imgs.to(self.device)
+        
     def training_step(self, train_dataloader:DataLoader):
         # Activate training mode
         self.model.train()
@@ -215,6 +311,9 @@ class TrainTestEval():
 
             if self.lr_scheduler:
                 self._schedule_lr(val_loss)
+            
+            if self.early_stopping:
+                self.early_stopping(val_loss, self.model, self.get_dummy_input(train_dataloader))
                 
                 
             # Plot the metrics curves
