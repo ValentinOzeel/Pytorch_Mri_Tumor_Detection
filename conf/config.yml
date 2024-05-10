@@ -1,13 +1,15 @@
 DATA_SPLITS:
-  TRAIN_TEST_RATIO: 0.9
-  TRAIN_VALID_RATIO: 0.85
+  train_test_ratio: 0.9
+  train_valid_ratio: 0.85
 
 RANDOM_SEED: null
 
 DATASET: CustomImageFolder
 
 DATA_LOADER:
-  BATCH_SIZE: 16
+  batch_size: 16
+  num_workers: 2
+  pin_memory: True
 
 DATA_TRANSFORM_AND_AUGMENTATION:
   train:
@@ -25,19 +27,21 @@ DATA_TRANSFORM_AND_AUGMENTATION:
         size: [224, 224]
     ToTensor: {}
     Normalize: {}
+
 MODEL_PARAMS:
-  HIDDEN_UNITS: 10
-  EPOCHS: 40
-  LOSS_FUNC: CrossEntropyLoss
-  OPTIMIZER: 
+  hidden_units: 10
+  epochs: 40
+  loss_func: CrossEntropyLoss
+  activation_func: ReLU
+  optimizer: 
     Adam:
       lr: 0.0001
-  LR_SCHEDULER:
+  lr_scheduler:
     ReduceLROnPlateau:
       mode: min
       factor: 0.1
       patience: 8
-  EARLY_STOPPING:
+  early_stopping:
     patience: 8
     delta: 0
     saving_option: model

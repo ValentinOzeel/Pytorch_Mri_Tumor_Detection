@@ -11,7 +11,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset, random_split, SubsetRandomSampler
 from torchvision import datasets, transforms
 
-from secondary_module import color_print
+from secondary_module import colorize
 from splitted_datasets import SplittedDataset
 
    
@@ -142,16 +142,16 @@ class LoadOurData():
         If kf is not assigned: Print metadata of train, valid and test datasets (no cv)
         Else: print metadata of train and valid dataseta for each cross_validation fold and finally that of test dataset
         '''
-        print(color_print("---------- DATASETS INFO ----------", "LIGHTGREEN_EX"))
+        print(colorize("---------- DATASETS INFO ----------", "LIGHTGREEN_EX"))
         
-        print(color_print("\nAll classes/labels: ", "BLUE"), self.class_to_idx, '\n')
+        print(colorize("\nAll classes/labels: ", "BLUE"), self.class_to_idx, '\n')
     
         for dataset_type in datasets_types:
             if self.datasets_metadata.get(dataset_type) is not None:
                 print(
-                    color_print(f"Info regarding {dataset_type}_dataset:", dataset_color[dataset_type]),
-                    color_print("\nLength: ", "LIGHTBLUE_EX"), self.datasets_metadata[dataset_type]['length'],       
-                    color_print("\nImages per class: ", "LIGHTBLUE_EX"), self.datasets_metadata[dataset_type]['count_per_class'], '\n'     
+                    colorize(f"Info regarding {dataset_type}_dataset:", dataset_color[dataset_type]),
+                    colorize("\nLength: ", "LIGHTBLUE_EX"), self.datasets_metadata[dataset_type]['length'],       
+                    colorize("\nImages per class: ", "LIGHTBLUE_EX"), self.datasets_metadata[dataset_type]['count_per_class'], '\n'     
                 )        
         
         if n_splits:
@@ -159,33 +159,26 @@ class LoadOurData():
                 # Print info for train and valid datasets for each cross-validation fold
                 for dataset_type in self.cross_valid_datasets:
                     print(
-                        color_print(f"Info regarding {dataset_type}_dataset, fold -- {i} -- of cross-validation:", dataset_color[dataset_type]),
-                        color_print("\nLength: ", "LIGHTBLUE_EX"), self.cross_valid_datasets_metadata[dataset_type][i]['length'],       
-                        color_print("\nImages per class: ", "LIGHTBLUE_EX"), self.cross_valid_datasets_metadata[dataset_type][i]['count_per_class'], '\n'     
+                        colorize(f"Info regarding {dataset_type}_dataset, fold -- {i} -- of cross-validation:", dataset_color[dataset_type]),
+                        colorize("\nLength: ", "LIGHTBLUE_EX"), self.cross_valid_datasets_metadata[dataset_type][i]['length'],       
+                        colorize("\nImages per class: ", "LIGHTBLUE_EX"), self.cross_valid_datasets_metadata[dataset_type][i]['count_per_class'], '\n'     
                     )  
         
         
-    def create_dataloaders(self, dataset, BATCH_SIZE:int, num_workers:int, pin_memory:bool, sampler=None, shuffle:bool=True,
-                           ) -> DataLoader:
+    def create_dataloaders(self, dataset:datasets, shuffle:bool, data_loader_params:Dict) -> DataLoader:
         return DataLoader(dataset=dataset,
-                          batch_size=BATCH_SIZE,
-                          sampler=sampler,
-                          num_workers=num_workers,
                           shuffle=shuffle,
-                          pin_memory=pin_memory)
+                          **data_loader_params)
          
-    def generate_dataloaders(self, BATCH_SIZE:int, dataset_types=['train', 'valid', 'test'], shuffle={'train':True, 'valid':False, 'test':False},
-                             num_workers=os.cpu_count(), pin_memory=True):
+    def generate_dataloaders(self, data_loader_params:Dict, dataset_types=['train', 'valid', 'test'], shuffle={'train':True, 'valid':False, 'test':False}):
         for dataset_type in dataset_types:
             # Create dataloader
             dataset=getattr(self, ''.join([dataset_type, '_dataset']))
             if dataset:
                 dataloader = self.create_dataloaders(dataset=dataset,
-                                                     BATCH_SIZE=BATCH_SIZE,
-                                                     num_workers=num_workers,
-                                                     pin_memory=pin_memory,
-                                                     shuffle=shuffle[dataset_type])
-
+                                                     shuffle=shuffle[dataset_type],
+                                                     data_loader_params=data_loader_params
+                                                     )
                 # Set dataloader as attribute
                 setattr(self, ''.join([dataset_type, '_dataloader']), dataloader)
 
@@ -200,23 +193,19 @@ class LoadOurData():
             
 
 
-    def generate_cv_dataloaders(self, BATCH_SIZE:int, num_workers=os.cpu_count(), pin_memory=True):
+    def generate_cv_dataloaders(self, data_loader_params:Dict):
         
         for train_dataset, valid_dataset in zip(self.cross_valid_datasets['train'], self.cross_valid_datasets['valid']):
             self.cross_valid_dataloaders['train'].append(self.create_dataloaders(
                                                                     dataset=train_dataset,
-                                                                    BATCH_SIZE=BATCH_SIZE,
-                                                                    num_workers=num_workers,
-                                                                    pin_memory=pin_memory,
-                                                                    shuffle=True)
+                                                                    shuffle=True,
+                                                                    data_loader_params=data_loader_params)
                                                     )
 
             self.cross_valid_dataloaders['valid'].append(self.create_dataloaders(
                                                                     dataset=valid_dataset,
-                                                                    BATCH_SIZE=BATCH_SIZE,
-                                                                    num_workers=num_workers,
-                                                                    pin_memory=pin_memory,
-                                                                    shuffle=True)
+                                                                    shuffle=True,
+                                                                    data_loader_params=data_loader_params)
                                                     )
                                                                 
                               

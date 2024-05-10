@@ -57,5 +57,5 @@ def check_cuda_availability():
     print(f"{symbol*2} --- Cuda {is_or_is_not} available on your machine. --- {symbol*2}")
     
     
-def color_print(to_print, color):
+def colorize(to_print, color):
     return f"{getattr(Fore, color) + to_print + Style.RESET_ALL}"

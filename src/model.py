@@ -5,10 +5,9 @@ from tqdm.auto import tqdm
 
 import torch 
 from torch import nn
-from torch.utils.data import DataLoader, Dataset
-from torchvision import datasets, transforms
+from torch.utils.data import DataLoader
 
-from secondary_module import ConfigLoad, color_print, project_root_path
+from secondary_module import colorize, project_root_path
 
 import matplotlib.pyplot as plt
 
@@ -20,6 +19,7 @@ class MRINeuralNet(nn.Module):
                  input_shape:Tuple[int],
                  hidden_units:int,
                  output_shape:int,
+                 activation_func:torch.nn
                  ):
         
         super().__init__()
@@ -27,19 +27,19 @@ class MRINeuralNet(nn.Module):
         self.input_shape = input_shape # [n_images, color_channels, height, width]
         self.hidden_units = hidden_units
         self.output_shape = output_shape # Number of classes
-            
+        self.activation_func = activation_func
         
         self.conv_1 = nn.Sequential(
             nn.Conv2d(
                 in_channels=self.input_shape[1], # Color channels
                 out_channels=self.hidden_units,
                 kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
+            self.activation_func(),
             nn.Conv2d(
                 in_channels=self.hidden_units,
                 out_channels=self.hidden_units,
                 kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
+            self.activation_func(),
             nn.MaxPool2d(kernel_size=2, stride=2)
         )
         
@@ -48,12 +48,12 @@ class MRINeuralNet(nn.Module):
                 in_channels=self.hidden_units,
                 out_channels=self.hidden_units,
                 kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
+            self.activation_func(),
             nn.Conv2d(
                 in_channels=self.hidden_units,
                 out_channels=self.hidden_units,
                 kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
+            self.activation_func(),
             nn.MaxPool2d(kernel_size=2, stride=2)
         )
         
@@ -73,7 +73,7 @@ class MRINeuralNet(nn.Module):
         # Helper function to calculate the number of features after convolutional layers
         # Assuming input_shape is in the format (channels, height, width)
         dummy_input_output = torch.randn(*self.input_shape)
-        with torch.no_grad():
+        with torch.inference_mode():
             # Pass dummy in all layers except for the last one
             for layer in self.all_layers_except_last:
                 dummy_input_output = layer(dummy_input_output)
@@ -162,7 +162,7 @@ class EarlyStopping:
                 
         if self.verbose:
             self.trace_func(
-                f'\nValidation loss decreased compared to the lowest value recorded ({self.val_loss_min:.6f} --> {val_loss:.6f}).')
+                f'Validation loss decreased compared to the lowest value recorded ({self.val_loss_min:.6f} --> {val_loss:.6f}).\n')
         
         self.val_loss_min = val_loss
             
@@ -223,9 +223,9 @@ class TrainTestEval():
             # Data to device
             imgs, labels = imgs.to(self.device), labels.to(self.device)
             # Forward pass
-            predictions = self.model(imgs)
+            train_pred_logit = self.model(imgs)
             # Calculate loss and add it to train_loss
-            loss = self.loss_func(predictions, labels)
+            loss = self.loss_func(train_pred_logit, labels)
             train_loss += loss.item()
             # Optimizer zero grad
             self.optimizer.zero_grad()
@@ -234,8 +234,8 @@ class TrainTestEval():
             # Optimizer step
             self.optimizer.step()
             # Calculate accuracy
-            predicted_classes = torch.argmax(torch.softmax(predictions, dim=1), dim=1)
-            train_acc += (predicted_classes==labels).sum().item()/len(predictions)
+            predicted_classes = torch.argmax(torch.softmax(train_pred_logit, dim=1), dim=1)
+            train_acc += (predicted_classes==labels).sum().item()/len(predicted_classes)
 
         # Average metrics per batch
         train_loss = train_loss / len(train_dataloader)
@@ -274,7 +274,7 @@ class TrainTestEval():
             self.lr_scheduler.step(metric)
         else:
             self.lr_scheduler.step()
-        print('\nLr value: ', self.optimizer.param_groups[0]['lr'])
+        #print('Lr value: ', self.optimizer.param_groups[0]['lr'])
 
     def training(self, train_dataloader:DataLoader, valid_dataloader:DataLoader, verbose: bool = True, plot_metrics:bool = True):
         # Empty dict to track metrics
@@ -301,11 +301,11 @@ class TrainTestEval():
             if verbose:
                 # Print metrics for each epoch
                 print(
-                    color_print("\nEpoch: ", "LIGHTGREEN_EX"), epoch,
-                    color_print("train_loss: ", "RED"), f"{train_loss:.4f}", color_print(" | ", "LIGHTMAGENTA_EX"),
-                    color_print("train_acc: ", "RED"), f"{train_acc:.4f}", color_print(" | ", "LIGHTMAGENTA_EX"),
-                    color_print("val_loss: ", "BLUE"), f"{val_loss:.4f}", color_print(" | ", "LIGHTMAGENTA_EX"),
-                    color_print("val_acc: ", "BLUE"), f"{val_acc:.4f}", color_print(" | ", "LIGHTMAGENTA_EX")
+                    colorize("\nEpoch: ", "LIGHTGREEN_EX"), epoch,
+                    colorize("train_loss: ", "RED"), f"{train_loss:.4f}", colorize(" | ", "LIGHTMAGENTA_EX"),
+                    colorize("train_acc: ", "RED"), f"{train_acc:.4f}", colorize(" | ", "LIGHTMAGENTA_EX"),
+                    colorize("val_loss: ", "BLUE"), f"{val_loss:.4f}", colorize(" | ", "LIGHTMAGENTA_EX"),
+                    colorize("val_acc: ", "BLUE"), f"{val_acc:.4f}", colorize(" | ", "LIGHTMAGENTA_EX")
                 )
 
 
@@ -387,9 +387,9 @@ class TrainTestEval():
         test_acc = test_acc / len(test_dataloader)
         
         print(
-            color_print("\nModel evaluation: ", "LIGHTGREEN_EX"),
-            color_print("test_loss: ", "RED"), f"{test_loss:.4f}", color_print(" | ", "LIGHTMAGENTA_EX"),
-            color_print("test_acc: ", "RED"), f"{test_acc:.4f}", color_print(" | ", "LIGHTMAGENTA_EX"),
+            colorize("\nModel evaluation: ", "LIGHTGREEN_EX"),
+            colorize("test_loss: ", "RED"), f"{test_loss:.4f}", colorize(" | ", "LIGHTMAGENTA_EX"),
+            colorize("test_acc: ", "RED"), f"{test_acc:.4f}", colorize(" | ", "LIGHTMAGENTA_EX"),
         )
                 
         return test_loss, test_acc
