@@ -32,6 +32,7 @@ MODEL_PARAMS:
   hidden_units: 10
   epochs: 40
   loss_func: CrossEntropyLoss
+  metrics : [accuracy, precision, recall, f1]
   activation_func: ReLU
   optimizer: 
     Adam:

@@ -1,6 +1,7 @@
 import os
 import numpy as np
-from typing import Tuple, Dict
+import copy
+from typing import Tuple, Dict, List
 from tqdm.auto import tqdm
 
 import torch 
@@ -180,12 +181,78 @@ class EarlyStopping:
 
 
 
+
+
+
+
+
+
+
+class MetricsTracker:
+    def __init__(self, metrics:List[str], n_classes:int, average:str='macro'):
+        
+        self.metrics = metrics
+        self.n_classes = n_classes
+        self.average = average.lower()
+        
+        if self.average not in ['macro', 'micro']:
+            raise ValueError("Invalid average parameter. Please use 'macro' or 'micro'.")
+        
+        available_metrics = ['accuracy', 'precision', 'recall', 'f1']
+        if set(self.metrics) - set(available_metrics):
+            raise ValueError(f"Invalid metrics parameter. Please only select available metrics. Available metrics: {available_metrics}.")
+        
+        self.reset()
+
+    def reset(self):
+        self.tp = torch.zeros(self.n_classes) if self.n_classes else 0
+        self.fp = torch.zeros(self.n_classes) if self.n_classes else 0
+        self.fn = torch.zeros(self.n_classes) if self.n_classes else 0
+        self.total_correct = 0
+        self.total_samples = 0
+
+    def update(self, predictions, labels):
+        if self.accuracy:
+            self.total_correct += torch.sum(predictions == labels).item()
+            self.total_samples += len(labels)
+
+        if self.precision or self.recall or self.f1:
+            for cls in range(self.n_classes):
+                self.tp[cls] += torch.sum((predictions == cls) & (labels == cls)).item()
+                self.fp[cls] += torch.sum((predictions == cls) & (labels != cls)).item()
+                self.fn[cls] += torch.sum((predictions != cls) & (labels == cls)).item()
+
+    def accuracy(self):
+        return self.total_correct / self.total_samples
+
+    def precision(self):
+        if self.average == 'macro':
+            return torch.mean(self.tp / (self.tp + self.fp + 1e-8))
+        elif self.average == 'micro':
+            return torch.sum(self.tp) / (torch.sum(self.tp) + torch.sum(self.fp) + 1e-8)
+
+    def recall(self):
+        if self.average == 'macro':
+            return torch.mean(self.tp / (self.tp + self.fn + 1e-8))
+        elif self.average == 'micro':
+            return torch.sum(self.tp) / (torch.sum(self.tp) + torch.sum(self.fn) + 1e-8)
+
+    def f1(self):
+        prec = self.precision()
+        rec = self.recall()
+        return 2 * (prec * rec) / (prec + rec + 1e-8)
+
+    def compute_metrics(self):
+        return {metric:getattr(self, metric)() for metric in self.metrics}
+
+
         
 class TrainTestEval():
     def __init__(self,
                  model: nn.Module,
                  optimizer: torch.optim.Optimizer,
                  loss_func: nn.Module,
+                 metrics_tracker: MetricsTracker,
                  epochs: int = 10,
                  lr_scheduler: torch.optim.lr_scheduler=None,
                  early_stopping:EarlyStopping=None,
@@ -196,10 +263,15 @@ class TrainTestEval():
         self.model = model 
         self.optimizer = optimizer
         self.loss_func = loss_func 
+        self.train_metrics_tracker = copy.deepcopy(metrics_tracker)
+        self.val_metrics_tracker = copy.deepcopy(metrics_tracker)
         self.epochs = epochs 
         self.lr_scheduler = lr_scheduler
         self.early_stopping = early_stopping
         self.device = device 
+        
+        self.all_metrics = copy.deepcopy(self.train_metrics_tracker.metrics)
+        self.all_metrics.insert(0, 'loss')
         
         # Put model on device
         self.model.to(self.device)
@@ -216,7 +288,7 @@ class TrainTestEval():
         # Activate training mode
         self.model.train()
         # Setup training loss and accuracy
-        train_loss, train_acc = 0, 0
+        train_loss = 0
 
         # Loop over dataloader batches
         for i, (imgs, labels) in enumerate(train_dataloader):
@@ -233,21 +305,21 @@ class TrainTestEval():
             loss.backward()
             # Optimizer step
             self.optimizer.step()
-            # Calculate accuracy
+            # Predictions
             predicted_classes = torch.argmax(torch.softmax(train_pred_logit, dim=1), dim=1)
-            train_acc += (predicted_classes==labels).sum().item()/len(predicted_classes)
+            # Update metrics
+            self.train_metrics_tracker.update(predicted_classes, labels)
 
-        # Average metrics per batch
+        # Average loss per batch
         train_loss = train_loss / len(train_dataloader)
-        train_acc = train_acc / len(train_dataloader)
-        return train_loss, train_acc
+        return train_loss
 
 
     def validation_step(self, valid_dataloader:DataLoader):
         # Model in eval mode
         self.model.eval()
         # Setup valid loss and accuracy 
-        val_loss, val_acc = 0, 0
+        val_loss = 0
 
         # Inference mode (not to compute gradient)
         with torch.inference_mode():
@@ -260,14 +332,14 @@ class TrainTestEval():
                 # Calculate valid loss
                 loss = self.loss_func(val_pred_logit, labels)
                 val_loss += loss.item()
-                # Calculate accuracy
+                # Predictions
                 predicted_classes = val_pred_logit.argmax(dim=1)
-                val_acc += ((predicted_classes==labels).sum().item()/len(predicted_classes))
-
-        # Average metrics per batch
+                # Update metrics
+                self.val_metrics_tracker.update(predicted_classes, labels)
+                
+        # Average loss per batch
         val_loss = val_loss / len(valid_dataloader)
-        val_acc = val_acc / len(valid_dataloader)
-        return val_loss, val_acc
+        return val_loss
     
     def _schedule_lr(self, metric):
         if isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
@@ -276,49 +348,67 @@ class TrainTestEval():
             self.lr_scheduler.step()
         #print('Lr value: ', self.optimizer.param_groups[0]['lr'])
 
+    def _organize_metrics_dict(self, gathered_metrics, train_metrics=None, val_metrics=None):
+        for metric in self.all_metrics:
+            gathered_metrics['train'][metric].append(train_metrics[metric])
+            gathered_metrics['val'][metric].append(val_metrics[metric])
+            
+        return gathered_metrics
+            
+        
     def training(self, train_dataloader:DataLoader, valid_dataloader:DataLoader, verbose: bool = True, plot_metrics:bool = True):
         # Empty dict to track metrics
-        training_metrics = {"train_loss": [],
-                            "train_acc": [],
-                            "val_loss": [],
-                            "val_acc": []
-                            }
+        gathered_metrics = {'train':{}, 'val':{}}
+        for state in gathered_metrics.keys():
+            for metric_name in self.all_metrics:
+                gathered_metrics[state][metric_name] = []
+
 
         # Initialize plot
         if plot_metrics:
-            plt.figure(figsize=(16, 8))
+            plt.figure(figsize=(16, 10))
             plt.ion()  # Turn on interactive mode for dynamic plotting
             
         # Loop through epochs 
         for epoch in tqdm(range(self.epochs)):
-            train_loss, train_acc = self.training_step(train_dataloader)
-            val_loss, val_acc = self.validation_step(valid_dataloader)
-
-            # Actualize result_metrics
-            training_metrics["train_loss"].append(train_loss), training_metrics["train_acc"].append(train_acc)
-            training_metrics["val_loss"].append(val_loss), training_metrics["val_acc"].append(val_acc)
+            # Reset metrics
+            self.train_metrics_tracker.reset()
+            self.val_metrics_tracker.reset()
+            # Train and validation steps
+            train_loss = self.training_step(train_dataloader)
+            val_loss = self.validation_step(valid_dataloader)
+            # Actualize gathered_metrics
+            train_metrics = self.train_metrics_tracker.compute_metrics()
+            train_metrics['loss'] = train_loss
+            val_metrics = self.val_metrics_tracker.compute_metrics()
+            val_metrics['loss'] = val_loss
+            # Keep track of computed metrics
+            gathered_metrics = self._organize_metrics_dict(gathered_metrics, train_metrics=train_metrics, val_metrics=val_metrics)
             
             if verbose:
-                # Print metrics for each epoch
+                print_train_metrics, print_val_metrics = '', ''
+
+                for metric_name in self.all_metrics:
+                    print_train_metrics = ''.join([print_train_metrics, colorize(''.join([metric_name, ': ']), "RED"), f"{train_metrics[metric_name]:.4f}", colorize(" | ", "LIGHTMAGENTA_EX")])
+       
+                for metric_name in self.all_metrics:
+                    print_val_metrics = ''.join([print_val_metrics, colorize(''.join([metric_name, ': ']), "BLUE"), f"{val_metrics[metric_name]:.4f}", colorize(" | ", "LIGHTMAGENTA_EX")])
+                # Print metrics at each epoch
                 print(
                     colorize("\nEpoch: ", "LIGHTGREEN_EX"), epoch,
-                    colorize("train_loss: ", "RED"), f"{train_loss:.4f}", colorize(" | ", "LIGHTMAGENTA_EX"),
-                    colorize("train_acc: ", "RED"), f"{train_acc:.4f}", colorize(" | ", "LIGHTMAGENTA_EX"),
-                    colorize("val_loss: ", "BLUE"), f"{val_loss:.4f}", colorize(" | ", "LIGHTMAGENTA_EX"),
-                    colorize("val_acc: ", "BLUE"), f"{val_acc:.4f}", colorize(" | ", "LIGHTMAGENTA_EX")
+                    '\n-- Train metrics --', print_train_metrics,   
+                    '\n-- Val metrics   --', print_val_metrics       
                 )
-
-
+                
             if self.lr_scheduler:
                 self._schedule_lr(val_loss)
             
             if self.early_stopping:
                 self.early_stopping(val_loss, self.model, self.get_dummy_input(train_dataloader))
-                
-                
+                   
             # Plot the metrics curves
             if plot_metrics:
-                self.plot_metrics(training_metrics)
+                self.plot_metrics(gathered_metrics)
             
         if plot_metrics:
             plt.tight_layout()
@@ -328,7 +418,7 @@ class TrainTestEval():
             fig = plt.gcf()  # Get the current figure
             fig.savefig('training_metrics.png')
 
-        return training_metrics
+        return gathered_metrics
 
     def cross_validation(self, cross_valid_dataloaders:Dict):
         training_metrics_per_fold = []
@@ -338,24 +428,19 @@ class TrainTestEval():
         
         
         
-    def plot_metrics(self, training_metrics:Dict):       
-        plt.subplot(1, 2, 1)
-        plt.plot(range(len(training_metrics["train_loss"])), training_metrics["train_loss"], label='train_loss', color='red')
-        plt.plot(range(len(training_metrics["val_loss"])), training_metrics["val_loss"], label='val_loss', color='blue')
-        if not plt.gca().get_title(): 
-            plt.title("train_loss VS val_loss")
-            plt.xlabel('Epochs')
-            plt.ylabel('Loss')
-            plt.legend()
-
-        plt.subplot(1, 2, 2)
-        plt.plot(range(len(training_metrics["train_acc"])), training_metrics["train_acc"], label='train_acc', color='red')
-        plt.plot(range(len(training_metrics["val_acc"])), training_metrics["val_acc"], label='val_acc', color='blue')
-        if not plt.gca().get_title(): 
-            plt.title("train_acc VS val_acc")
-            plt.xlabel('Epochs')
-            plt.ylabel('Accuracy')
-            plt.legend()
+    def plot_metrics(self, gathered_metrics:Dict):  
+        train_metrics, val_metrics = gathered_metrics['train'], gathered_metrics['val']
+        for i, metric_name in enumerate(self.all_metrics):
+            plt.subplot(1, len(self.all_metrics), i+1)
+            
+            plt.plot(range(len(train_metrics[metric_name])), train_metrics[metric_name], label=''.join(['train_', metric_name]), color='red')
+            plt.plot(range(len(val_metrics[metric_name])), val_metrics[metric_name], label=''.join(['val_', metric_name]), color='blue')
+                
+            if not plt.gca().get_title(): 
+                plt.title(f"train_{metric_name} VS val_{metric_name}")
+                plt.xlabel('Epochs')
+                plt.ylabel(metric_name)
+                plt.legend()
 
         plt.tight_layout()
         plt.draw()
@@ -399,7 +484,7 @@ class TrainTestEval():
         # Model in eval mode
         self.model.eval()
 
-        pred_logits, pred_classes = [], []
+        pred_classes = []
         # Inference mode (not to compute gradient)
         with torch.inference_mode():
             # Loop over batches
@@ -411,7 +496,6 @@ class TrainTestEval():
                 # Get predicted classes
                 predicted_classes = pred_logit.argmax(dim=1)
                 # Extend predictions lists
-                pred_logits.extend(pred_logit)
                 pred_classes.extend(predicted_classes)
    
-        return pred_logits, pred_classes
+        return pred_classes

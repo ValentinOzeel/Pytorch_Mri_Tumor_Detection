@@ -13,7 +13,7 @@ from timeit import default_timer as timer
 
 from data_loading import LoadOurData
 from secondary_module import ConfigLoad, colorize, check_cuda_availability
-from model import MRINeuralNet, EarlyStopping, TrainTestEval
+from model import MRINeuralNet, EarlyStopping, TrainTestEval, MetricsTracker
 
 
 
@@ -107,8 +107,11 @@ class Main():
     def get_MRINeuralNet_instance(self, input_shape, hidden_units, output_shape, activation_func):
         return MRINeuralNet(input_shape, hidden_units, output_shape, activation_func)
         
-    def get_TrainTestEval_instance(self, model, optimizer, loss_func, epochs = 10, lr_scheduler=None, early_stopping=None):
-        return TrainTestEval(model, optimizer, loss_func, epochs=epochs, lr_scheduler=lr_scheduler, early_stopping=early_stopping, device=self.device, RANDOM_SEED=self.RANDOM_SEED)
+    def get_MetricsTracker_instance(self, metrics:List[str], n_classes:int, average:str='macro'):
+        return MetricsTracker(metrics, n_classes, average=average)
+    
+    def get_TrainTestEval_instance(self, model, optimizer, loss_func, metrics_tracker, epochs = 10, lr_scheduler=None, early_stopping=None):
+        return TrainTestEval(model, optimizer, loss_func, metrics_tracker=metrics_tracker, epochs=epochs, lr_scheduler=lr_scheduler, early_stopping=early_stopping, device=self.device, RANDOM_SEED=self.RANDOM_SEED)
 
     def run_cross_validation(self, TrainTestEval_instance:TrainTestEval, cross_valid_dataloaders:Dict):
         training_metrics_per_fold = TrainTestEval_instance.cross_validation(cross_valid_dataloaders)
@@ -140,8 +143,8 @@ class Main():
         dataset = load.original_dataset
         dataloader = load.create_dataloaders(dataset, batch_size, shuffle=False)
         
-        pred_logits, pred_classes = TrainTestEval_instance.inference(dataloader)
-        return pred_logits, pred_classes
+        pred_classes = TrainTestEval_instance.inference(dataloader)
+        return pred_classes
         
 
 if __name__ == "__main__":
@@ -188,8 +191,10 @@ if __name__ == "__main__":
     optimizer_name = next(iter(config['MODEL_PARAMS']['optimizer']))
     optimizer = getattr(torch.optim, optimizer_name)
     optimizer_params = config['MODEL_PARAMS']['optimizer'][optimizer_name]
-    # Get loos function
+    # Get loss function
     loss_func =  getattr(torch.nn, config['MODEL_PARAMS']['loss_func'])
+    # Get metrics to track
+    metrics_to_track = config['MODEL_PARAMS']['metrics']
     # Get acctivation function
     activation_func = getattr(torch.nn, config['MODEL_PARAMS']['activation_func'])
     # Get hidden_units and epochs
@@ -219,7 +224,7 @@ if __name__ == "__main__":
     # Print torchinfo's model summary
     summary(base_model, input_size=input_shape)
 
-
+    metrics_tracker = dl.get_MetricsTracker_instance(metrics_to_track, len(dl.load.classes))
 
 
     # Initiate TrainTestEval class instance
@@ -229,6 +234,7 @@ if __name__ == "__main__":
                                      model = base_model,
                                      optimizer = optimizer_inst,
                                      loss_func = loss_func(),
+                                     metrics_tracker = metrics_tracker,
                                      epochs = epochs,
                                      lr_scheduler = lr_scheduler_obj(optimizer_inst, **lr_scheduler_params),
                                      early_stopping = early_stopping
