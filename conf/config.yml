@@ -16,7 +16,7 @@ DATA_TRANSFORM_AND_AUGMENTATION:
     Resize: 
         size: [224, 224]
     RandAugment: 
-        num_ops: 2
+        num_ops: 40
         magnitude: 10
     TrivialAugmentWide:
         num_magnitude_bins: 31
@@ -30,9 +30,13 @@ DATA_TRANSFORM_AND_AUGMENTATION:
 
 MODEL_PARAMS:
   hidden_units: 10
-  epochs: 40
+  epochs: 2
   loss_func: CrossEntropyLoss
   metrics : [accuracy, precision, recall, f1]
+  torchmetrics:
+    ConfusionMatrix:
+      task: multiclass
+      num_classes: 4
   activation_func: ReLU
   optimizer: 
     Adam:

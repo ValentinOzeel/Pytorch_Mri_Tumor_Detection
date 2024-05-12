@@ -4,6 +4,8 @@ from typing import List, Dict
 import torch
 from torchvision import datasets, transforms
 
+import torchmetrics
+
 from colorama import init, Fore, Back, Style
 init() # Initialize Colorama to work on Windows
 
@@ -49,6 +51,10 @@ class ConfigLoad():
     def get_nested_param(self, config_dict:dict):
         return next(iter(config_dict.items()))
         
+    def get_torchmetrics_dict(self, device:str, dict_name='torchmetrics'):
+        config = self.config['MODEL_PARAMS'][dict_name]
+        return {metric_name:getattr(torchmetrics, metric_name)(**params).to(device) for metric_name, params in config.items()}
+
 
 def check_cuda_availability():
     is_or_is_not = 'is' if torch.cuda.is_available() else 'is not'

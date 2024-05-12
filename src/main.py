@@ -107,8 +107,8 @@ class Main():
     def get_MRINeuralNet_instance(self, input_shape, hidden_units, output_shape, activation_func):
         return MRINeuralNet(input_shape, hidden_units, output_shape, activation_func)
         
-    def get_MetricsTracker_instance(self, metrics:List[str], n_classes:int, average:str='macro'):
-        return MetricsTracker(metrics, n_classes, average=average)
+    def get_MetricsTracker_instance(self, metrics:List[str], n_classes:int, average:str='macro', torchmetrics:Dict={}):
+        return MetricsTracker(metrics, n_classes, average=average, torchmetrics=torchmetrics)
     
     def get_TrainTestEval_instance(self, model, optimizer, loss_func, metrics_tracker, epochs = 10, lr_scheduler=None, early_stopping=None):
         return TrainTestEval(model, optimizer, loss_func, metrics_tracker=metrics_tracker, epochs=epochs, lr_scheduler=lr_scheduler, early_stopping=early_stopping, device=self.device, RANDOM_SEED=self.RANDOM_SEED)
@@ -195,6 +195,8 @@ if __name__ == "__main__":
     loss_func =  getattr(torch.nn, config['MODEL_PARAMS']['loss_func'])
     # Get metrics to track
     metrics_to_track = config['MODEL_PARAMS']['metrics']
+    # Get torchmetrics to track
+    torch_metrics = config_load.get_torchmetrics_dict(device)
     # Get acctivation function
     activation_func = getattr(torch.nn, config['MODEL_PARAMS']['activation_func'])
     # Get hidden_units and epochs
@@ -224,7 +226,8 @@ if __name__ == "__main__":
     # Print torchinfo's model summary
     summary(base_model, input_size=input_shape)
 
-    metrics_tracker = dl.get_MetricsTracker_instance(metrics_to_track, len(dl.load.classes))
+    # Get metrics to track during training/validation
+    metrics_tracker = dl.get_MetricsTracker_instance(metrics_to_track, len(dl.load.classes), torchmetrics=torch_metrics)
 
 
     # Initiate TrainTestEval class instance

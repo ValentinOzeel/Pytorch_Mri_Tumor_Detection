@@ -189,18 +189,21 @@ class EarlyStopping:
 
 
 class MetricsTracker:
-    def __init__(self, metrics:List[str], n_classes:int, average:str='macro'):
+    def __init__(self, metrics:List[str], n_classes:int, average:str='macro', torchmetrics:Dict={}):
         
         self.metrics = metrics
         self.n_classes = n_classes
         self.average = average.lower()
+        self.torchmetrics = torchmetrics
+        
+        self.all_metrics = self.metrics + list(self.torchmetrics.keys())
         
         if self.average not in ['macro', 'micro']:
             raise ValueError("Invalid average parameter. Please use 'macro' or 'micro'.")
         
-        available_metrics = ['accuracy', 'precision', 'recall', 'f1']
-        if set(self.metrics) - set(available_metrics):
-            raise ValueError(f"Invalid metrics parameter. Please only select available metrics. Available metrics: {available_metrics}.")
+        self.available_metrics = ['accuracy', 'precision', 'recall', 'f1']
+        if set(self.metrics) - set(self.available_metrics):
+            raise ValueError(f"Invalid 'metrics' parameter. Please only select available metrics ({self.available_metrics}) or use torchmetrics parameter.")
         
         self.reset()
 
@@ -210,17 +213,24 @@ class MetricsTracker:
         self.fn = torch.zeros(self.n_classes) if self.n_classes else 0
         self.total_correct = 0
         self.total_samples = 0
+        
+        for _, metric_obj in self.torchmetrics.items():
+            metric_obj.reset()
 
     def update(self, predictions, labels):
-        if self.accuracy:
+        if 'accuracy' in self.metrics:
             self.total_correct += torch.sum(predictions == labels).item()
             self.total_samples += len(labels)
 
-        if self.precision or self.recall or self.f1:
+        if any(metric for metric in ['precision', 'recall', 'f1'] if metric in self.metrics):
             for cls in range(self.n_classes):
                 self.tp[cls] += torch.sum((predictions == cls) & (labels == cls)).item()
                 self.fp[cls] += torch.sum((predictions == cls) & (labels != cls)).item()
                 self.fn[cls] += torch.sum((predictions != cls) & (labels == cls)).item()
+        
+        for _, metric_obj in self.torchmetrics.items():
+            metric_obj.update(predictions, labels)
+            
 
     def accuracy(self):
         return self.total_correct / self.total_samples
@@ -243,7 +253,13 @@ class MetricsTracker:
         return 2 * (prec * rec) / (prec + rec + 1e-8)
 
     def compute_metrics(self):
-        return {metric:getattr(self, metric)() for metric in self.metrics}
+        # Add metrics
+        metrics_dict = {metric:getattr(self, metric)() for metric in self.metrics}
+        # Add torchmetrics
+        for metric_name, metric_obj in self.torchmetrics.items():
+            metrics_dict[metric_name] = metric_obj
+
+        return metrics_dict
 
 
         
@@ -270,8 +286,13 @@ class TrainTestEval():
         self.early_stopping = early_stopping
         self.device = device 
         
-        self.all_metrics = copy.deepcopy(self.train_metrics_tracker.metrics)
-        self.all_metrics.insert(0, 'loss')
+        
+        self.curve_metrics = copy.deepcopy(self.train_metrics_tracker.metrics)
+        self.curve_metrics.insert(0, 'loss')
+        
+        self.torchmetrics = copy.deepcopy(list(self.train_metrics_tracker.torchmetrics.keys()))
+        
+        self.all_metrics = self.curve_metrics + self.torchmetrics
         
         # Put model on device
         self.model.to(self.device)
@@ -366,7 +387,7 @@ class TrainTestEval():
 
         # Initialize plot
         if plot_metrics:
-            plt.figure(figsize=(16, 10))
+            plt.figure(figsize=(20, 12))
             plt.ion()  # Turn on interactive mode for dynamic plotting
             
         # Loop through epochs 
@@ -384,14 +405,14 @@ class TrainTestEval():
             val_metrics['loss'] = val_loss
             # Keep track of computed metrics
             gathered_metrics = self._organize_metrics_dict(gathered_metrics, train_metrics=train_metrics, val_metrics=val_metrics)
-            
+            # Print training/validation info
             if verbose:
                 print_train_metrics, print_val_metrics = '', ''
 
-                for metric_name in self.all_metrics:
+                for metric_name in self.curve_metrics:
                     print_train_metrics = ''.join([print_train_metrics, colorize(''.join([metric_name, ': ']), "RED"), f"{train_metrics[metric_name]:.4f}", colorize(" | ", "LIGHTMAGENTA_EX")])
        
-                for metric_name in self.all_metrics:
+                for metric_name in self.curve_metrics:
                     print_val_metrics = ''.join([print_val_metrics, colorize(''.join([metric_name, ': ']), "BLUE"), f"{val_metrics[metric_name]:.4f}", colorize(" | ", "LIGHTMAGENTA_EX")])
                 # Print metrics at each epoch
                 print(
@@ -417,8 +438,20 @@ class TrainTestEval():
             plt.ioff()  # Turn off interactive mode
             fig = plt.gcf()  # Get the current figure
             fig.savefig('training_metrics.png')
-
-        return gathered_metrics
+            plt.clf
+            
+            for metric in self.torchmetrics:
+                fig = plt.figure(figsize=(10, 6), layout="constrained")
+                ax1 = plt.subplot(1, 2, 1)
+                ax2 = plt.subplot(1, 2, 2)
+                gathered_metrics['train'][metric][-1].plot(ax=ax1)
+                ax1.set_title(f"train_{metric}")
+                gathered_metrics['val'][metric][-1].plot(ax=ax2)
+                ax2.set_title(f"val_{metric}")
+                fig.savefig(f'{metric}.png')
+                plt.clf
+            
+        return self.model, gathered_metrics
 
     def cross_validation(self, cross_valid_dataloaders:Dict):
         training_metrics_per_fold = []
@@ -430,18 +463,15 @@ class TrainTestEval():
         
     def plot_metrics(self, gathered_metrics:Dict):  
         train_metrics, val_metrics = gathered_metrics['train'], gathered_metrics['val']
-        for i, metric_name in enumerate(self.all_metrics):
-            plt.subplot(1, len(self.all_metrics), i+1)
-            
+        for i, metric_name in enumerate(self.curve_metrics):
+            plt.subplot(1, len(self.curve_metrics), i+1)
             plt.plot(range(len(train_metrics[metric_name])), train_metrics[metric_name], label=''.join(['train_', metric_name]), color='red')
             plt.plot(range(len(val_metrics[metric_name])), val_metrics[metric_name], label=''.join(['val_', metric_name]), color='blue')
-                
             if not plt.gca().get_title(): 
                 plt.title(f"train_{metric_name} VS val_{metric_name}")
                 plt.xlabel('Epochs')
                 plt.ylabel(metric_name)
                 plt.legend()
-
         plt.tight_layout()
         plt.draw()
         plt.pause(0.5)

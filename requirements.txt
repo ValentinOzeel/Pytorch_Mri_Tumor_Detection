@@ -4,4 +4,7 @@ torchvision   ==    0.18.0+cu121
 PyYAML
 colorama
 torchinfo
+torchmetrics
 tqdm
+matplotlib
+scikit-learn
