@@ -124,7 +124,8 @@ class LoadOurData():
         def count_samples_per_class():     
             # Initialize a defaultdict to count samples per class
             classes = self.original_dataset.classes
-            samples_per_class = defaultdict(int)
+            samples_per_class = copy.deepcopy(self.class_to_idx)
+            samples_per_class = {key:0 for key in sorted(self.class_to_idx.keys())}
             # Iterate over all samples and count occurrences of each class  
             for _, label in dataset:
                 img_class = classes[label]
@@ -165,7 +166,7 @@ class LoadOurData():
                     )  
         
         
-    def create_dataloaders(self, dataset:datasets, shuffle:bool, data_loader_params:Dict) -> DataLoader:
+    def create_dataloader(self, dataset:datasets, shuffle:bool, data_loader_params:Dict) -> DataLoader:
         return DataLoader(dataset=dataset,
                           shuffle=shuffle,
                           **data_loader_params)
@@ -175,7 +176,7 @@ class LoadOurData():
             # Create dataloader
             dataset=getattr(self, ''.join([dataset_type, '_dataset']))
             if dataset:
-                dataloader = self.create_dataloaders(dataset=dataset,
+                dataloader = self.create_dataloader(dataset=dataset,
                                                      shuffle=shuffle[dataset_type],
                                                      data_loader_params=data_loader_params
                                                      )
@@ -196,13 +197,13 @@ class LoadOurData():
     def generate_cv_dataloaders(self, data_loader_params:Dict):
         
         for train_dataset, valid_dataset in zip(self.cross_valid_datasets['train'], self.cross_valid_datasets['valid']):
-            self.cross_valid_dataloaders['train'].append(self.create_dataloaders(
+            self.cross_valid_dataloaders['train'].append(self.create_dataloader(
                                                                     dataset=train_dataset,
                                                                     shuffle=True,
                                                                     data_loader_params=data_loader_params)
                                                     )
 
-            self.cross_valid_dataloaders['valid'].append(self.create_dataloaders(
+            self.cross_valid_dataloaders['valid'].append(self.create_dataloader(
                                                                     dataset=valid_dataset,
                                                                     shuffle=True,
                                                                     data_loader_params=data_loader_params)

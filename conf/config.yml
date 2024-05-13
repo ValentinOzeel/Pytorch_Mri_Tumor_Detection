@@ -16,7 +16,7 @@ DATA_TRANSFORM_AND_AUGMENTATION:
     Resize: 
         size: [224, 224]
     RandAugment: 
-        num_ops: 40
+        num_ops: 3
         magnitude: 10
     TrivialAugmentWide:
         num_magnitude_bins: 31
@@ -30,7 +30,7 @@ DATA_TRANSFORM_AND_AUGMENTATION:
 
 MODEL_PARAMS:
   hidden_units: 10
-  epochs: 2
+  epochs: 500
   loss_func: CrossEntropyLoss
   metrics : [accuracy, precision, recall, f1]
   torchmetrics:

@@ -90,6 +90,9 @@ class MRINeuralNet(nn.Module):
                )
         
         
+        
+        
+        
 class EarlyStopping:
     """Early stops the training if validation loss doesn't improve after a given patience."""
 
@@ -148,7 +151,7 @@ class EarlyStopping:
         elif score < self.best_score + self.delta:
             self.counter += 1
             if self.verbose:
-                self.trace_func(f'\nEarlyStopping counter: {self.counter} out of {self.patience}')
+                self.trace_func(f'EarlyStopping counter: {self.counter} out of {self.patience}\n')
             if self.counter >= self.patience:
                 self.early_stop = True
         else:
@@ -172,11 +175,11 @@ class EarlyStopping:
                 raise ValueError("kwargs[0]/input_data_onnx parameter should be assigned when calling early_stopping while using saving_option = 'onnx'.")
         
             if self.saving_option == 'model':
-                torch.save(model, os.path.join(self.save_dir_path, 'model.pth'))
+                torch.save(model, os.path.join(self.save_dir_path, 'best_model_checkpoint.pth'))
             elif self.saving_option == 'dict_state':
-                torch.save(model.state_dict(), os.path.join(self.save_dir_path, 'model_state.pth'))
+                torch.save(model.state_dict(), os.path.join(self.save_dir_path, 'best_model_state_checkpoint.pth'))
             else:
-                torch.onnx.export(model, input_data_onnx, os.path.join(self.save_dir_path, 'model.onnx'))
+                torch.onnx.export(model, input_data_onnx, os.path.join(self.save_dir_path, 'best_model_checkpoint.onnx'))
             
 
 
@@ -260,6 +263,8 @@ class MetricsTracker:
             metrics_dict[metric_name] = metric_obj
 
         return metrics_dict
+
+
 
 
         
@@ -377,17 +382,16 @@ class TrainTestEval():
         return gathered_metrics
             
         
-    def training(self, train_dataloader:DataLoader, valid_dataloader:DataLoader, verbose: bool = True, plot_metrics:bool = True):
+    def training(self, train_dataloader:DataLoader, valid_dataloader:DataLoader, verbose: bool = True, real_time_plot_metrics:bool = True, save_metric_plot = True):
         # Empty dict to track metrics
         gathered_metrics = {'train':{}, 'val':{}}
         for state in gathered_metrics.keys():
             for metric_name in self.all_metrics:
                 gathered_metrics[state][metric_name] = []
 
-
         # Initialize plot
-        if plot_metrics:
-            plt.figure(figsize=(20, 12))
+        if real_time_plot_metrics:
+            plt.figure(figsize=(len(self.curve_metrics)*4, 8))
             plt.ion()  # Turn on interactive mode for dynamic plotting
             
         # Loop through epochs 
@@ -418,46 +422,33 @@ class TrainTestEval():
                 print(
                     colorize("\nEpoch: ", "LIGHTGREEN_EX"), epoch,
                     '\n-- Train metrics --', print_train_metrics,   
-                    '\n-- Val metrics   --', print_val_metrics       
+                    '\n--  Val metrics  --', print_val_metrics       
                 )
                 
+            # Plot the metrics curves
+            if real_time_plot_metrics:
+                self.plot_metrics(gathered_metrics)
+            # Adjust learning rate
             if self.lr_scheduler:
                 self._schedule_lr(val_loss)
-            
+            # Check for early_stopping
             if self.early_stopping:
-                self.early_stopping(val_loss, self.model, self.get_dummy_input(train_dataloader))
-                   
-            # Plot the metrics curves
-            if plot_metrics:
-                self.plot_metrics(gathered_metrics)
-            
-        if plot_metrics:
+                if self.early_stopping(val_loss, self.model, self.get_dummy_input(train_dataloader)):
+                    break
+
+        if save_metric_plot:
             plt.tight_layout()
-            #plt.draw()
-            #plt.pause(0.1)
             plt.ioff()  # Turn off interactive mode
             fig = plt.gcf()  # Get the current figure
             fig.savefig('training_metrics.png')
             plt.clf
             
-            for metric in self.torchmetrics:
-                fig = plt.figure(figsize=(10, 6), layout="constrained")
-                ax1 = plt.subplot(1, 2, 1)
-                ax2 = plt.subplot(1, 2, 2)
-                gathered_metrics['train'][metric][-1].plot(ax=ax1)
-                ax1.set_title(f"train_{metric}")
-                gathered_metrics['val'][metric][-1].plot(ax=ax2)
-                ax2.set_title(f"val_{metric}")
-                fig.savefig(f'{metric}.png')
-                plt.clf
+            self.save_plot_torchmetrics(gathered_metrics)
+
             
         return self.model, gathered_metrics
 
-    def cross_validation(self, cross_valid_dataloaders:Dict):
-        training_metrics_per_fold = []
-        for fold, (train_dataloader, valid_dataloader) in enumerate(zip(cross_valid_dataloaders['train'], cross_valid_dataloaders['valid'])):
-            training_metrics_per_fold.append(self.training(train_dataloader, valid_dataloader))
-        return training_metrics_per_fold
+
         
         
         
@@ -475,6 +466,24 @@ class TrainTestEval():
         plt.tight_layout()
         plt.draw()
         plt.pause(0.5)
+        
+    def save_plot_torchmetrics(self, gathered_metrics:Dict):
+        for metric in self.torchmetrics:
+            fig = plt.figure(figsize=(10, 6), layout="constrained")
+            ax1 = plt.subplot(1, 2, 1)
+            ax2 = plt.subplot(1, 2, 2)
+            gathered_metrics['train'][metric][-1].plot(ax=ax1)
+            ax1.set_title(f"train_{metric}")
+            gathered_metrics['val'][metric][-1].plot(ax=ax2)
+            ax2.set_title(f"val_{metric}")
+            fig.savefig(f'{metric}.png')
+            plt.clf
+        
+    def cross_validation(self, cross_valid_dataloaders:Dict):
+        training_metrics_per_fold = []
+        for fold, (train_dataloader, valid_dataloader) in enumerate(zip(cross_valid_dataloaders['train'], cross_valid_dataloaders['valid'])):
+            training_metrics_per_fold.append(self.training(train_dataloader, valid_dataloader, save_metric_plot=False))
+        return training_metrics_per_fold
         
     def evaluation(self, test_dataloader:DataLoader):
         # Model in eval mode
