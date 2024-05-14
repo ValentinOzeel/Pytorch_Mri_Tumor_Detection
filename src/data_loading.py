@@ -3,7 +3,7 @@ import os
 import random
 import copy
 from collections import defaultdict
-from typing import Tuple, Dict, List
+from typing import Tuple, Dict, List, Optional
 
 import matplotlib.pyplot as plt
 
@@ -16,48 +16,105 @@ from splitted_datasets import SplittedDataset
 
    
 class LoadOurData():
-    def __init__(self, data_dir, DatasetClass:Dataset, RANDOM_SEED:int=None, 
-                 initial_transform:transforms=None, initial_target_transform:transforms=None, 
-                 inference:bool=False):
+    def __init__(self, data_dir_path:str, DatasetClass:Dataset, 
+                 test_data_dir_path=None, random_seed:int=None, inference:bool=False):
+        '''
+        Assign data_dir so that to get all the files from this path and create train/val as well as potentially test datasets 
+        If you have another folder dedicated for your test_data, add the path to test_data_dir kwarg
+        Otherwise, activate inference Flag to tell that your data_dir is for your inference data
+        '''
         
-        self.data_dir = data_dir
+        self.data_prep = DataPrep(root=data_dir_path, random_seed=random_seed)
+        self.original_df = self.data_prep.create_path_class_df()
+        
         self.DatasetClass = DatasetClass
-
-        if isinstance(RANDOM_SEED, int): 
-            random.seed(RANDOM_SEED)
-            torch.manual_seed(RANDOM_SEED)
         
-        self.original_dataset = self.get_original_dataset(initial_transform, initial_target_transform)
+        self.random_seed = random_seed
+        if isinstance(random_seed, int): 
+            random.seed(random_seed)
+            torch.manual_seed(random_seed)
         
         if not inference:
-            self.classes = self.original_dataset.classes
-            self.class_to_idx = self.original_dataset.class_to_idx
+            self.test_data_dir_path = test_data_dir_path
+            self.classes = self.DatasetClass(self.original_df).classes
+            self.classes = self.DatasetClass(self.original_df).class_to_idx
 
             self.train_dataset=None
-            self.valid_dataset=None
+            self.val_dataset=None
             self.test_dataset=None
 
             self.train_dataloader=None
-            self.valid_dataloader=None
+            self.val_dataloader=None
             self.test_dataloader=None
 
             self.datasets_metadata = {'train':None,
-                                      'valid':None,
+                                      'val':None,
                                       'test' :None}
     
             self.cv = False
-            self.cross_valid_datasets = {'train': [], 'valid': []}       
-            self.cross_valid_dataloaders = {'train': [], 'valid': []}
-            self.cross_valid_datasets_metadata = {'train': {}, 'valid': {}}
+            self.cross_val_datasets = {'train': [], 'val': []}       
+            self.cross_val_dataloaders = {'train': [], 'val': []}
+            self.cross_val_datasets_metadata = {'train': {}, 'val': {}}
             
             # Mean and std are computed based on training dataset for dataset normalization
             self.mean = None 
             self.std = None
-             
+            
+            
 
-    def get_original_dataset(self, transform:transforms=None, target_transform:transforms=None):
-        return self.DatasetClass(root=self.data_dir, transform=transform, target_transform=target_transform) if self.data_dir else None
     
+    def train_test_presplit(self, train_ratio:float):
+        self.data_prep.train_test_presplit(train_ratio)
+        
+    def _get_corresponding_transforms(self, dataset_type: str, dict_transforms: Dict, dict_target_transforms: Optional[Dict] = None):
+        # Get transform and potential target_transform associated to dataset_type
+        return dict_transforms.get(dataset_type), dict_target_transforms.get(dataset_type) if dict_target_transforms else None
+        
+    def generate_datasets(self, train_ratio:float, dict_transforms:Dict, dict_target_transforms:Dict=None):
+        self.data_prep.train_test_presplit(train_ratio)
+        # Get types (according to performed presplits/splits in self.data_prep)
+        dataset_types = [dataset_type for dataset_type in ['train', 'val', 'test'] if hasattr(self.data_prep, ''.join([dataset_type, '_df']))]
+        
+        for dataset_type in dataset_types:
+            # Get the corresponding path_class dataframe
+            df = getattr(self.data_prep, ''.join([dataset_type, '_df']))
+            # Get the corresponding transform and target_transform
+            transform, target_transform = self._get_corresponding_transforms(dataset_type, dict_transforms, dict_target_transforms=dict_target_transforms)
+            # Set self."dataset_type"_dataset attribute = self.DatasetClass objet
+            setattr(self, ''.join([dataset_type, '_dataset']), self.DatasetClass(df, transform=transform, target_transform=target_transform))
+            
+        # If test_data in another folder
+        if self.test_data_dir:
+            data_prep = DataPrep(root=self.test_data_dir_path, random_seed=self.random_seed)
+            df = data_prep.create_path_class_df()
+            transform, target_transform = self._get_corresponding_transforms('test', dict_transforms, dict_target_transforms=dict_target_transforms)
+            self.test_dataset = self.DatasetClass(df, transform=transform, target_transform=target_transform)
+            
+            
+    def generate_cv_datasets(self, dict_transforms:Dict, dict_target_transforms:Dict=None, 
+                             n_splits:int=5, shuffle:bool=True, kf=None):
+        self.cv = True
+        # Get the splitted data in a dict (key = fold, value = dict{train:df, valid:df})
+        cv_dfs = self.data_prep.cv_splits(n_splits=n_splits, shuffle=shuffle, kf=kf)
+
+        n = kf.get_n_splits() if kf else n_splits
+        
+        for fold in range(n):
+            for dataset_type in ['train', 'val']:
+                # Get the corresponding path_class dataframe
+                df = cv_dfs[fold][dataset_type]
+                # Get the corresponding transform and target_transform
+                transform, target_transform = self._get_corresponding_transforms(dataset_type, dict_transforms, dict_target_transforms=dict_target_transforms)
+                # Set attributes
+                self.cross_val_datasets[fold][dataset_type] = self.DatasetClass(df, transform=transform, target_transform=target_transform)
+        
+        
+        
+        WE NEED TO DO DATALOADER NOW (ALL DATASETS ARE READY)
+        
+        
+        
+        
     def calculate_normalization(self, batch_size:int=8, resize=(224, 224)):
         if not self.train_dataset: 
             raise ValueError('Normalization should be calculated on training dataset, but there is no self.train_dataset initiated.')
@@ -99,25 +156,8 @@ class LoadOurData():
         return {'mean':self.mean, 'std':self.std}
 
 
-    def create_splitted_dataset(self, dataset, transform):
-        # This class is for splitted datasets (so that they can carry out the transformations)
-        # Enable to apply various transform to different dataset that has been splitted from an initial dataset
-        return SplittedDataset(dataset, transform) if dataset else None
 
 
-    def train_test_split(self, train_ratio:float):
-        if not train_ratio >= 0 and not train_ratio <= 1: raise ValueError('train_size must be comprised between 0 and 1.')
-        self.train_dataset, self.test_dataset = random_split(self.original_dataset, [train_ratio, 1-train_ratio])
-    
-    def train_valid_split(self, train_ratio:float):
-        if not train_ratio >= 0 and not train_ratio <= 1: raise ValueError('train_size must be comprised between 0 and 1.')
-        dataset = self.original_dataset if not self.test_dataset else self.train_dataset
-        self.train_dataset, self.valid_dataset = random_split(dataset, [train_ratio, 1-train_ratio])
-                  
-    def apply_transformations(self, dataset_transform:List[Tuple]):
-        #for dataset, transform in dataset_transform:
-        #    dataset = self.create_splitted_dataset(dataset, transform)
-        return [self.create_splitted_dataset(dataset, transform) for dataset, transform in dataset_transform]
 
         
     def get_dataset_metadata(self, dataset:Dataset):
@@ -137,11 +177,11 @@ class LoadOurData():
 
 
         
-    def print_dataset_info(self, datasets_types:List[str]=['train', 'valid', 'test'], n_splits=None,
-                                 dataset_color = {'train':'LIGHTRED_EX', 'valid':'LIGHTYELLOW_EX', 'test':'LIGHTMAGENTA_EX'}):
+    def print_dataset_info(self, datasets_types:List[str]=['train', 'val', 'test'], n_splits=None,
+                                 dataset_color = {'train':'LIGHTRED_EX', 'val':'LIGHTYELLOW_EX', 'test':'LIGHTMAGENTA_EX'}):
         '''
-        If kf is not assigned: Print metadata of train, valid and test datasets (no cv)
-        Else: print metadata of train and valid dataseta for each cross_validation fold and finally that of test dataset
+        If kf is not assigned: Print metadata of train, val and test datasets (no cv)
+        Else: print metadata of train and val dataset for each cross_validation fold and finally that of test dataset
         '''
         print(colorize("---------- DATASETS INFO ----------", "LIGHTGREEN_EX"))
         
@@ -158,12 +198,15 @@ class LoadOurData():
         if n_splits:
             for i in range(n_splits):
                 # Print info for train and valid datasets for each cross-validation fold
-                for dataset_type in self.cross_valid_datasets:
+                for dataset_type in self.cross_val_datasets:
                     print(
                         colorize(f"Info regarding {dataset_type}_dataset, fold -- {i} -- of cross-validation:", dataset_color[dataset_type]),
-                        colorize("\nLength: ", "LIGHTBLUE_EX"), self.cross_valid_datasets_metadata[dataset_type][i]['length'],       
-                        colorize("\nImages per class: ", "LIGHTBLUE_EX"), self.cross_valid_datasets_metadata[dataset_type][i]['count_per_class'], '\n'     
+                        colorize("\nLength: ", "LIGHTBLUE_EX"), self.cross_val_datasets_metadata[dataset_type][i]['length'],       
+                        colorize("\nImages per class: ", "LIGHTBLUE_EX"), self.cross_val_datasets_metadata[dataset_type][i]['count_per_class'], '\n'     
                     )  
+        
+        
+        
         
         
     def create_dataloader(self, dataset:datasets, shuffle:bool, data_loader_params:Dict) -> DataLoader:
@@ -171,7 +214,7 @@ class LoadOurData():
                           shuffle=shuffle,
                           **data_loader_params)
          
-    def generate_dataloaders(self, data_loader_params:Dict, dataset_types=['train', 'valid', 'test'], shuffle={'train':True, 'valid':False, 'test':False}):
+    def generate_dataloaders(self, data_loader_params:Dict, dataset_types=['train', 'val', 'test'], shuffle={'train':True, 'val':False, 'test':False}):
         for dataset_type in dataset_types:
             # Create dataloader
             dataset=getattr(self, ''.join([dataset_type, '_dataset']))
@@ -188,23 +231,23 @@ class LoadOurData():
 
     def generate_cv_datasets(self, kf):
         self.cv = True
-        for train_idx, valid_idx in kf.split(self.train_dataset):
-            self.cross_valid_datasets['train'].append(torch.utils.data.Subset(self.train_dataset, train_idx))
-            self.cross_valid_datasets['valid'].append(torch.utils.data.Subset(self.train_dataset, valid_idx))
+        for train_idx, val_idx in kf.split(self.train_dataset):
+            self.cross_val_datasets['train'].append(torch.utils.data.Subset(self.train_dataset, train_idx))
+            self.cross_val_datasets['val'].append(torch.utils.data.Subset(self.train_dataset, val_idx))
             
 
 
     def generate_cv_dataloaders(self, data_loader_params:Dict):
         
-        for train_dataset, valid_dataset in zip(self.cross_valid_datasets['train'], self.cross_valid_datasets['valid']):
-            self.cross_valid_dataloaders['train'].append(self.create_dataloader(
+        for train_dataset, val_dataset in zip(self.cross_val_datasets['train'], self.cross_val_datasets['val']):
+            self.cross_val_dataloaders['train'].append(self.create_dataloader(
                                                                     dataset=train_dataset,
                                                                     shuffle=True,
                                                                     data_loader_params=data_loader_params)
                                                     )
 
-            self.cross_valid_dataloaders['valid'].append(self.create_dataloader(
-                                                                    dataset=valid_dataset,
+            self.cross_val_dataloaders['val'].append(self.create_dataloader(
+                                                                    dataset=val_dataset,
                                                                     shuffle=True,
                                                                     data_loader_params=data_loader_params)
                                                     )
