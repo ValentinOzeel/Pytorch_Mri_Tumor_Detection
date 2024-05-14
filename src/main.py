@@ -13,7 +13,7 @@ from timeit import default_timer as timer
 
 from data_loading import LoadOurData
 from secondary_module import ConfigLoad, colorize, check_cuda_availability
-from model import MRINeuralNet, EarlyStopping, TrainTestEval, MetricsTracker
+from model import MRI_CNN, EarlyStopping, TrainTestEval, MetricsTracker
 
 
 
@@ -94,7 +94,7 @@ class Main():
                 ])
         # Generate dataloader for train - valid datasets for each fold of cv
         self.load.generate_cv_dataloaders(data_loader_params)
-    
+
         # Print random transformed images
         self.load.show_random_images(self.load.cross_valid_dataloaders['train'][0], display_seconds=show_random_image, unnormalize=True)
         
@@ -104,8 +104,8 @@ class Main():
         
         return imgs.shape, labels.shape
 
-    def get_MRINeuralNet_instance(self, input_shape, hidden_units, output_shape, activation_func):
-        return MRINeuralNet(input_shape, hidden_units, output_shape, activation_func)
+    def get_MRI_CNN_instance(self, input_shape, hidden_units, output_shape, activation_func):
+        return MRI_CNN(input_shape, hidden_units, output_shape, activation_func)
         
     def get_MetricsTracker_instance(self, metrics:List[str], n_classes:int, average:str='macro', torchmetrics:Dict={}):
         return MetricsTracker(metrics, n_classes, average=average, torchmetrics=torchmetrics)
@@ -218,7 +218,7 @@ if __name__ == "__main__":
 
         
     # Define model 
-    base_model = dl.get_MRINeuralNet_instance(input_shape=input_shape, 
+    base_model = dl.get_MRI_CNN_instance(input_shape=input_shape, 
                                               hidden_units=hidden_units,
                                               output_shape=len(dl.load.classes),
                                               activation_func=activation_func)

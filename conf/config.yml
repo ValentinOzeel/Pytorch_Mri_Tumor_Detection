@@ -29,7 +29,7 @@ DATA_TRANSFORM_AND_AUGMENTATION:
     Normalize: {}
 
 MODEL_PARAMS:
-  hidden_units: 10
+  hidden_units: 32
   epochs: 500
   loss_func: CrossEntropyLoss
   metrics : [accuracy, precision, recall, f1]
@@ -44,8 +44,8 @@ MODEL_PARAMS:
   lr_scheduler:
     ReduceLROnPlateau:
       mode: min
-      factor: 0.1
-      patience: 8
+      factor: 0.25
+      patience: 5
   early_stopping:
     patience: 8
     delta: 0

@@ -12,84 +12,75 @@ from secondary_module import colorize, project_root_path
 
 import matplotlib.pyplot as plt
 
-class MRINeuralNet(nn.Module):
-    '''
-    Convolutionnal neural network to predict tumor in MRIs scan images.
-    '''
-    def __init__(self,
+
+class MRI_CNN(nn.Module):
+    # CNN architecture for MRI tumors classification
+    def __init__(self,                  
                  input_shape:Tuple[int],
                  hidden_units:int,
                  output_shape:int,
                  activation_func:torch.nn
                  ):
-        
-        super().__init__()
-        
+
         self.input_shape = input_shape # [n_images, color_channels, height, width]
         self.hidden_units = hidden_units
         self.output_shape = output_shape # Number of classes
         self.activation_func = activation_func
         
-        self.conv_1 = nn.Sequential(
-            nn.Conv2d(
-                in_channels=self.input_shape[1], # Color channels
-                out_channels=self.hidden_units,
-                kernel_size=3, stride=1, padding=1),
-            self.activation_func(),
-            nn.Conv2d(
-                in_channels=self.hidden_units,
-                out_channels=self.hidden_units,
-                kernel_size=3, stride=1, padding=1),
-            self.activation_func(),
-            nn.MaxPool2d(kernel_size=2, stride=2)
-        )
+        super(MRI_CNN, self).__init__()
         
-        self.conv_2 = nn.Sequential(
-            nn.Conv2d(
-                in_channels=self.hidden_units,
-                out_channels=self.hidden_units,
-                kernel_size=3, stride=1, padding=1),
-            self.activation_func(),
-            nn.Conv2d(
-                in_channels=self.hidden_units,
-                out_channels=self.hidden_units,
-                kernel_size=3, stride=1, padding=1),
-            self.activation_func(),
-            nn.MaxPool2d(kernel_size=2, stride=2)
-        )
-        
-        
-        self.all_layers_except_last = [self.conv_1, self.conv_2]
-        # Calculate the number of input features for the linear layer dynamically
-        self.last_layer_output_shape = self._calculate_last_layer_output_shape()
-        
-        self.classifier = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(
-                in_features=self.hidden_units * self.last_layer_output_shape[-2] * self.last_layer_output_shape[-1],
-                out_features=self.output_shape)
+        # Convolutional layers
+        self.conv1 = nn.Conv2d(in_channels=self.input_shape[1], out_channels=self.hidden_units, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(in_channels=self.hidden_units, out_channels=self._hidden_units(2), kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(in_channels=self.hidden_units, out_channels=self._hidden_units(2), kernel_size=3, padding=1)
+        # Max pooling layers
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        # Chain convolutional layers
+        self.conv_layers = nn.Sequential(
+            self.conv1, self.activation_func(), self.pool,
+            self.conv2, self.activation_func(), self.pool,
+            self.conv3, self.activation_func(), self.pool
         )
 
-    def _calculate_last_layer_output_shape(self):
+        # Calculate the number of input features for the linear layer dynamically
+        self.last_conv_output_shape = self._calculate_last_conv_layer_output_shape()
+        
+        # Flatten 
+        self.flatten = nn.Flatten()
+        
+        # Fully connected layers
+        self.fc1 = nn.Linear(self.hidden_units * self.last_conv_output_shape[-2] * self.last_conv_output_shape[-1], self._hidden_units(4))
+        self.fc2 = nn.Linear(self.hidden_units, self.output_shape)
+        # Dropout regularization
+        self.dropout = nn.Dropout(p=0.5)
+        # Chain dense layers
+        self.dense_layers = nn.Sequential(
+            self.fc1, self.activation_func(), self.dropout,
+            self.fc2
+        )
+
+
+    def _hidden_units(self, multiplier:int):
+        if isinstance(multiplier, int):
+            self.hidden_units = self.hidden_units * multiplier
+            return self.hidden_units
+        
+    def _calculate_last_conv_layer_output_shape(self):
         # Helper function to calculate the number of features after convolutional layers
         # Assuming input_shape is in the format (channels, height, width)
         dummy_input_output = torch.randn(*self.input_shape)
         with torch.inference_mode():
             # Pass dummy in all layers except for the last one
-            for layer in self.all_layers_except_last:
+            for layer in self.conv_layers:
                 dummy_input_output = layer(dummy_input_output)
         return dummy_input_output.shape
         
-        
     def forward(self, x):
-        # Operator fusion: reducing memory overhead and improving computational efficiency
-        return self.classifier(
-                 self.conv_2(
-                    self.conv_1(x)
-                 )
-               )
-        
-        
+        return self.dense_layers(self.flatten(self.conv_layers(x)))
+         
+
+
+
         
         
         
@@ -372,7 +363,7 @@ class TrainTestEval():
             self.lr_scheduler.step(metric)
         else:
             self.lr_scheduler.step()
-        #print('Lr value: ', self.optimizer.param_groups[0]['lr'])
+        print('Lr value: ', self.optimizer.param_groups[0]['lr'], '\n')
 
     def _organize_metrics_dict(self, gathered_metrics, train_metrics=None, val_metrics=None):
         for metric in self.all_metrics:
