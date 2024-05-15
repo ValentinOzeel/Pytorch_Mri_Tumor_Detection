@@ -14,7 +14,9 @@ from torchvision import datasets, transforms
 from secondary_module import colorize
 from splitted_datasets import SplittedDataset
 
-   
+## Changing dataloading in branch rework_data_loading
+
+
 class LoadOurData():
     def __init__(self, data_dir, DatasetClass:Dataset, RANDOM_SEED:int=None, 
                  initial_transform:transforms=None, initial_target_transform:transforms=None, 
