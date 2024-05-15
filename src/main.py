@@ -20,86 +20,57 @@ from model import MRI_CNN, EarlyStopping, TrainTestEval, MetricsTracker
 
 
 class Main():
-    def __init__(self, data_dir, dataset_class, device, random_seed):
+    def __init__(self, data_dir_path, DatasetClass, device, random_seed):
 
         
         
         self.device = device
         self.random_seed = random_seed
         # Create an instance of LoadOurData (enable to create datasets, dataloaders..)
-        self.load = LoadOurData(data_dir, dataset_class, random_seed=self.random_seed)
+        self.load = LoadOurData(data_dir_path, DatasetClass, test_data_dir_path=None, random_seed=self.random_seed)
         
 
     def train_test_presplit(self, train_ratio:float=0.9):
-        self.load.train_test_presplit(train_ratio)
+        # Split the data (data represents a df (cols = ['path', 'label']) in datasets.DataPrep) into train and valid dfs
+        self.load.train_test_presplit(train_ratio=train_ratio)
         
-    def load_data(self, data_loader_params:Dict, train_transform:transforms, test_transform:transforms=None, train_ratio:float=0.85, 
-                  show_random_image:int=20, verbose=True):
-        # Split train_dataset into train_dataset and valid_dataset
-        self.load.train_valid_split(train_ratio=train_ratio)
-        # Apply transformation to train, valid and test datasets
-        self.load.train_dataset, self.load.valid_dataset, self.load.test_dataset = self.load.apply_transformations(
-            dataset_transform=[(self.load.train_dataset, train_transform), 
-                               (self.load.valid_dataset, train_transform), 
-                               (self.load.test_dataset,  test_transform)]
-            )
-        # Create corresponding dataloaders
-        self.load.generate_dataloaders(data_loader_params)
-
-    
+    def load_data(self, data_loader_params:Dict, dict_transform_steps:Dict[str, List], dict_target_transform_steps:Dict[str, List] = None, train_ratio:float=0.9,
+                  show_random_images:int=6, image_display_seconds:int=30, verbose=True):
+        # Generate Datasets 
+        self.load.generate_datasets(train_ratio, dict_transform_steps, dict_target_transform_steps=dict_target_transform_steps)
         # Store datasets' metadata (len, count_per_class)
-        for dataset_type, dataset in [('train', self.load.train_dataset), 
-                                      ('valid', self.load.valid_dataset), 
-                                      ('test',  self.load.test_dataset)]:
-            self.load.datasets_metadata[dataset_type] = self.load.get_dataset_metadata(dataset)
+        self.load.store_datasets_metadata()
         if verbose: self.load.print_dataset_info() 
-
+        # Generate DataLoaders
+        self.load.generate_dataloaders(data_loader_params)
         # Print random transformed images
-        self.load.show_random_images(self.load.train_dataloader, display_seconds=show_random_image, unnormalize=True)
-        
+        if show_random_images:
+            self.load.show_random_images(self.load.train_dataloader, n=show_random_images, display_seconds=image_display_seconds, unnormalize=True)
         # Get one iteration of train_dataloader (loading in batches) for model's input shape
         imgs, labels = next(iter(self.load.train_dataloader))
         print('Dataloader batches:', 'Image shapes', imgs.shape, 'label shapes', labels.shape)
-        
         return imgs.shape, labels.shape
 
             
     def load_data_cv(self,
-                  data_loader_params:Dict, train_transform:transforms, test_transform:transforms=None,
+                  data_loader_params:Dict, dict_transform_steps:Dict[str, List], dict_target_transform_steps:Dict[str, List]=None,
                   train_ratio:float=0.85,
                   kf=None,
-                  show_random_image:int=20, verbose=True):        
-        # Store train and test datasets' metadata (len, count_per_class)
-        for dataset_type, dataset in [('train', self.load.train_dataset), 
-                                      ('test', self.load.test_dataset)]:
-            self.load.datasets_metadata[dataset_type] = self.load.get_dataset_metadata(dataset)
+                  show_random_images:int=6, image_display_seconds:int=30, verbose=True):
             
         # Calculate the number of splits based on the train/validation ratio
         n_splits = int(1 / (1 - train_ratio))
         # Generate the datasets for cross-validation
-        kf = kf if kf is not None else KFold(n_splits=n_splits, shuffle=True, random_state=self.random_seed)
-        self.load.generate_cv_datasets(kf)   
-        
+        self.load.generate_cv_datasets(dict_transform_steps, dict_target_transform_steps=dict_target_transform_steps, 
+                                       n_splits=n_splits, shuffle=True, kf=kf)
         # Get metadata for train and valid datasets for each cv fold
-        for dataset_type in self.load.cross_valid_datasets:
-            for fold, dataset in enumerate(self.load.cross_valid_datasets[dataset_type]):
-                self.load.cross_valid_datasets_metadata[dataset_type][fold] = self.load.get_dataset_metadata(dataset)
-        
-        if verbose: self.load.print_dataset_info(n_splits=kf.get_n_splits())
-        
-        # Apply transformation to the test dataset
-        self.load.apply_transformations(dataset_transform=[(self.load.test_dataset, test_transform)])
-        # Apply transformation to train and valid datasets for each fold
-        for dataset_type in ['train', 'valid']:
-            self.load.apply_transformations(dataset_transform=[
-                (x, train_transform) for x in self.load.cross_valid_datasets[dataset_type]
-                ])
+        self.load.store_datasets_metadata(cv=True)        
+        if verbose: self.load.print_dataset_info(n_splits=self.load.cv_n_splits)
         # Generate dataloader for train - valid datasets for each fold of cv
         self.load.generate_cv_dataloaders(data_loader_params)
-
         # Print random transformed images
-        self.load.show_random_images(self.load.cross_valid_dataloaders['train'][0], display_seconds=show_random_image, unnormalize=True)
-        
+        if show_random_images:
+            self.load.show_random_images(self.load.cross_val_dataloaders['train'][0], n=show_random_images, display_seconds=image_display_seconds, unnormalize=True)
         # Get one iteration of train_dataloader (loading in batches) for model's input shape
         imgs, labels = next(iter(self.load.cross_valid_dataloaders['train'][0]))
         print('Dataloader batches:', 'Image shapes', imgs.shape, 'label shapes', labels.shape)
@@ -137,9 +108,9 @@ class Main():
         
         return test_loss, test_acc
 
-    def make_inference(self, data_dir, DatasetClass:Dataset, transform:transforms, batch_size:int, TrainTestEval_instance:TrainTestEval, target_transform:transforms=None):
+    def make_inference(self, data_dir_path, DatasetClass:Dataset, transform:transforms, batch_size:int, TrainTestEval_instance:TrainTestEval, target_transform:transforms=None):
         
-        load = LoadOurData(data_dir, DatasetClass, random_seed=self.random_seed, 
+        load = LoadOurData(data_dir_path, DatasetClass, random_seed=self.random_seed, 
                            initial_transform=transform, initial_target_transform=target_transform, 
                            inference=True)
         dataset = load.original_dataset
@@ -154,38 +125,35 @@ if __name__ == "__main__":
     # _______________
     # Assuming data_exploration.py is in src\main.py
     project_root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    data_dir = os.path.join(project_root_path, 'data')
-    
-    # Config
-    config_load = ConfigLoad()
-    config = config_load.get_config()
+    data_dir_path = os.path.join(project_root_path, 'data')
 
     # Setup device-agnostic device
     check_cuda_availability()
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
+
+
+
     
-    # Initiate Main class
-    dl = Main(data_dir, config_load.get_dataset(), device=device, random_seed=config['random_seed'])
-    # Presplit original dataset in train and test datasets 
-    dl.train_test_presplit(train_ratio=config['DATA_SPLITS']['train_ratio'])
+    
+
     
     
     ###########                 ###########
     ########### GET CONFIG DATA ###########
     ###########                 ###########
-    random_seed = config['random_seed']
+    config_load = ConfigLoad()
+    config = config_load.get_config()
+    
+    random_seed = config['RANDOM_SEED']
     # Dataset class used
-    dataset_class = config_load.get_dataset()
-    # Get mean and standard deviation of the pixel values across all images in our dataset
-    normalize_params = dl.load.calculate_normalization()
-    # train_transform used for train and valid datasets
+    DatasetClass = config_load.get_dataset()
     # test_transform used for test_dataset (because we want to predict on real life data (only resized and transformed asd tensor))
-    train_transform_steps, test_transform_steps = config_load.get_transform_steps(normalize_params=normalize_params), config_load.get_transform_steps(dataset_type='test', normalize_params=normalize_params)  
-    # Create composes
-    train_transform, test_transform = transforms.Compose(train_transform_steps), transforms.Compose(test_transform_steps)
+    train_transform_steps, test_transform_steps = config_load.get_transform_steps(dataset_type='train'), config_load.get_transform_steps(dataset_type='test')  
+    # Create dict_transform_steps
+    dict_transform_steps = {'train':train_transform_steps, 'val':train_transform_steps, 'test':test_transform_steps}
     # Get train ratios
-    train_ratio, train_ratio = config['DATA_SPLITS']['train_ratio'], config['DATA_SPLITS']['train_ratio']
+    train_ratio_presplit, train_ratio_split = config['DATA_SPLITS']['train_test_ratio'], config['DATA_SPLITS']['train_val_ratio']
     # Get dataloader params
     data_loader_params = config['DATA_LOADER']
     # Model params
@@ -207,17 +175,21 @@ if __name__ == "__main__":
     # Define lr_scheduler obj and params
     lr_schd_name, lr_scheduler_params = config_load.get_nested_param(config['MODEL_PARAMS']['lr_scheduler'])
     lr_scheduler_obj = getattr(lr_scheduler, lr_schd_name)
-    
+    # Early stopping
     if config['MODEL_PARAMS'].get('early_stopping'):
         early_stopping = EarlyStopping(**config['MODEL_PARAMS']['early_stopping'])
 
 
+
+    # Initiate Main class
+    dl = Main(data_dir_path, DatasetClass, device=device, random_seed=random_seed)
+    # Presplit original dataset into train and test dfs 
+    dl.train_test_presplit(train_ratio=train_ratio_presplit)
+    
     # Load data into datasets and dataloaders
-    # _______________
-
-    input_shape, labels_shape = dl.load_data(data_loader_params, train_transform, test_transform=test_transform, train_ratio=train_ratio)
-    #input_shape, labels_shape = dl.load_data_cv(data_loader_params, train_transform, test_transform=test_transform, train_ratio=train_ratio, num_workers=6)
-
+    # _______________    
+    input_shape, labels_shape = dl.load_data(data_loader_params, dict_transform_steps, train_ratio=train_ratio_split)
+    #input_shape, labels_shape = dl.load_data_cv(data_loader_params, dict_transform_steps, train_ratio=train_ratio_split)
         
     # Define model 
     base_model = dl.get_MRI_CNN_instance(input_shape=input_shape, 

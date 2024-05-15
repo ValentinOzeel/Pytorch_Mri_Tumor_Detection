@@ -1,10 +1,10 @@
 DATA_SPLITS:
   train_test_ratio: 0.9
-  train_valid_ratio: 0.85
+  train_val_ratio: 0.85
 
 RANDOM_SEED: null
 
-DATASET: CustomImageFolder
+DATASET: CustomDfImageFolder
 
 DATA_LOADER:
   batch_size: 16

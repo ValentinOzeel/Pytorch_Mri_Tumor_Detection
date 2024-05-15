@@ -22,9 +22,10 @@ class DataPrep():
         
     def create_path_class_df(self):
         self.original_df = pd.DataFrame(
-            {img_path:img_path.parent.name for img_path in self.all_img_paths_in_root},
+            [(img_path, img_path.parent.name) for img_path in self.all_img_paths_in_root],
             columns=['path', 'class']
             )
+        return self.original_df
          
     def train_test_presplit(self, train_ratio:float):
         if hasattr(self, 'val_df') or hasattr(self, 'cv_indices'):
@@ -42,6 +43,10 @@ class DataPrep():
         self.train_df = self.original_df.loc[train_indices]
         self.test_df = self.original_df.loc[test_indices]
     
+        # Reset indices
+   #     self.train_df.reset_index(inplace=True, drop=True)
+   #     self.test_df.reset_index(inplace=True, drop=True)
+        
         return self.train_df, self.test_df
 
 
@@ -58,7 +63,10 @@ class DataPrep():
     
         self.train_df = train_df.loc[train_indices]
         self.val_df = train_df.loc[val_indices]
-    
+        # Reset indices
+    #    self.train_df.reset_index(inplace=True, drop=True)
+    #    self.val_df.reset_index(inplace=True, drop=True)
+        
         return self.train_df, self.val_df
     
     def cv_splits(self, n_splits:int=5, shuffle:bool=True, kf=None):
@@ -74,12 +82,15 @@ class DataPrep():
         for i, (train_indices, val_indices) in enumerate(kfold.split(X, y)):
             self.cv_dfs[i]['train'] = train_df.loc[train_indices]
             self.cv_dfs[i]['val'] = train_df.loc[val_indices]
+            # Reset indices
+     #       self.cv_dfs[i]['train'].reset_index(inplace=True, drop=True)
+     #       self.cv_dfs[i]['val'].reset_index(inplace=True, drop=True)
 
         return self.cv_dfs
     
     
     
-class CustomImageFolder(Dataset):
+class CustomDfImageFolder(Dataset):
     '''
     Inherit from torch.utils.data.Dataset to create custom Dataset that replicate ImageFolder (torchvision.datasets.ImageFolder)
     '''
@@ -89,6 +100,7 @@ class CustomImageFolder(Dataset):
                  target_transform = None):
         
         self.path_class_df = path_class_df
+        self.path_class_df.reset_index(inplace=True, drop=True)
         self.transform = transform
         self.target_transform = target_transform
         
@@ -115,7 +127,6 @@ class CustomImageFolder(Dataset):
     
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, int]:
         # Overwrite Dataset's __getitem__ method to return one data sample (data, label) potentially transformed
-        
         # Get image path and class
         img_path, img_class = self.path_class_df.loc[index, 'path'], self.path_class_df.loc[index, 'class']
         # Load image
