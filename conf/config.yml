@@ -1,10 +1,10 @@
 DATA_SPLITS:
   train_test_ratio: 0.9
-  train_valid_ratio: 0.85
+  train_val_ratio: 0.9
 
 RANDOM_SEED: null
 
-DATASET: CustomImageFolder
+DATASET: CustomDfImageFolder
 
 DATA_LOADER:
   batch_size: 16
@@ -15,9 +15,9 @@ DATA_TRANSFORM_AND_AUGMENTATION:
   train:
     Resize: 
         size: [224, 224]
-    RandAugment: 
-        num_ops: 3
-        magnitude: 10
+#    RandAugment: 
+#        num_ops: 3
+#        magnitude: 10
     TrivialAugmentWide:
         num_magnitude_bins: 31
     ToTensor: {}
@@ -40,14 +40,14 @@ MODEL_PARAMS:
   activation_func: ReLU
   optimizer: 
     Adam:
-      lr: 0.0001
+      lr: 0.001
   lr_scheduler:
     ReduceLROnPlateau:
       mode: min
       factor: 0.25
       patience: 5
   early_stopping:
-    patience: 8
+    patience: 20
     delta: 0
     saving_option: model
     verbose: True

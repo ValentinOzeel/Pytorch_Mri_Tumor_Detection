@@ -9,7 +9,7 @@ import torchmetrics
 from colorama import init, Fore, Back, Style
 init() # Initialize Colorama to work on Windows
 
-from datasets import CustomImageFolder
+from datasets import CustomDfImageFolder
 
 # Assuming data_exploration.py is in src\main.py
 project_root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -25,8 +25,7 @@ class ConfigLoad():
     def get_config(self):
         return self.config
             
-    def get_transform_steps(self, dict_name='DATA_TRANSFORM_AND_AUGMENTATION', dataset_type='train', 
-                            normalize_params:Dict=None) -> List:
+    def get_transform_steps(self, dict_name='DATA_TRANSFORM_AND_AUGMENTATION', dataset_type='train') -> List:
         '''
         Access transformation dict defined in config
         Transform it as a list of torchvision.transforms steps
@@ -39,14 +38,15 @@ class ConfigLoad():
             # Initialize the transform method with its defined parameters and append in list
             if params: 
                 steps.append(transform_step(**params))
+            # Just add a Normalize flag: Normalization will be computed on training dataset upon Dataset creation
             elif step_name.lower() == 'normalize':
-                steps.append(transform_step(**normalize_params))
+                steps.append('Normalize')
             else:
                 steps.append(transform_step()) 
         return steps
     
     def get_dataset(self, dict_name='DATASET'):
-        return CustomImageFolder if self.config[dict_name] == 'CustomImageFolder' else getattr(datasets, self.config[dict_name])
+        return CustomDfImageFolder if self.config[dict_name] == 'CustomDfImageFolder' else getattr(datasets, self.config[dict_name])
     
     def get_nested_param(self, config_dict:dict):
         return next(iter(config_dict.items()))
