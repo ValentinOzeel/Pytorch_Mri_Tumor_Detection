@@ -152,6 +152,7 @@ class EarlyStopping:
         self.early_stop = False
         self.val_loss_min = np.Inf
         self.best_model_checkpoint = None
+        self.best_epoch = None
         
         if self.save_checkpoint and not os.path.exists(self.save_dir_path):
             raise ValueError("Incorrect save_dir_path to save checkpoint when calling early_stopping.")
@@ -159,7 +160,7 @@ class EarlyStopping:
         if self.saving_option not in ['model', 'state_dict', 'onnx']:
             raise ValueError("EarlyStopping class' saving_option parameter should be either 'model', 'dict_state' or 'onnx'.")
         
-    def __call__(self, val_loss, model, input_data_onnx=None):
+    def __call__(self, epoch, val_loss, model, input_data_onnx=None):
         """Return self.early_stop value: True or False. Potentially save checkpoints.
 
         Args:
@@ -175,7 +176,7 @@ class EarlyStopping:
 
         if self.best_score is None:
             self.best_score = score
-            self._save_checkpoint(val_loss, model, input_data_onnx)
+            self._save_checkpoint(epoch, val_loss, model, input_data_onnx)
         elif score < self.best_score + self.delta:
             self.counter += 1
             if self.verbose:
@@ -184,12 +185,12 @@ class EarlyStopping:
                 self.early_stop = True
         else:
             self.best_score = score
-            self._save_checkpoint(val_loss, model, input_data_onnx)
+            self._save_checkpoint(epoch, val_loss, model, input_data_onnx)
             self.counter = 0
             
         return self.early_stop
 
-    def _save_checkpoint(self, val_loss, model, input_data_onnx):
+    def _save_checkpoint(self, epoch, val_loss, model, input_data_onnx):
         """Saves model when validation loss decrease.
 
         Args:
@@ -204,6 +205,7 @@ class EarlyStopping:
         
         self.val_loss_min = val_loss
         self.best_model_checkpoint = model
+        self.best_epoch = epoch
             
         if self.save_checkpoint:
             if self.saving_option == 'onnx' and not input_data_onnx:
@@ -546,17 +548,15 @@ class TrainTestEval():
             # Check for early_stopping
             if self.early_stopping:
                 # If early stop, get the best checkpoint model and break the training loop
-                if self.early_stopping(val_loss, self.model, self.get_dummy_input(train_dataloader)):
+                if self.early_stopping(epoch, val_loss, self.model, self.get_dummy_input(train_dataloader)):
+                    checkpoint_epoch = self.early_stopping.best_epoch
                     self.model = self.early_stopping.best_model_checkpoint
                     break
 
         if save_metric_plot:
-            plt.tight_layout()
             plt.ioff()  # Turn off interactive mode
-            fig = plt.gcf()  # Get the current figure
-            fig.savefig('training_metrics.png')
-            plt.clf
-                        
+            plt.clf()
+            self.save_plot_metrics(gathered_metrics, checkpoint_epoch=checkpoint_epoch if checkpoint_epoch else None) 
             self.save_plot_torchmetrics(gathered_metrics)
             
         return self.model, gathered_metrics
@@ -581,6 +581,26 @@ class TrainTestEval():
         plt.tight_layout()
         plt.draw()
         plt.pause(0.5)
+        
+    def save_plot_metrics(self, gathered_metrics:Dict, checkpoint_epoch:int=None):
+        train_metrics, val_metrics = gathered_metrics['train'], gathered_metrics['val']
+        for i, metric_name in enumerate(self.curve_metrics):
+            plt.subplot(1, len(self.curve_metrics), i+1)
+            plt.plot(range(len(train_metrics[metric_name])), train_metrics[metric_name], label=''.join(['train_', metric_name]), color='red')
+            plt.plot(range(len(val_metrics[metric_name])), val_metrics[metric_name], label=''.join(['val_', metric_name]), color='blue')
+            if checkpoint_epoch:
+                # Add early stopping delimitation on graph
+                plt.axvline(x=checkpoint_epoch, color='#260026', linestyle='--', linewidth=0.5, label='Last model checkpoint')
+         
+            plt.title(f"train_{metric_name} VS val_{metric_name}")
+            plt.xlabel('Epochs')
+            plt.ylabel(metric_name)
+            plt.legend()
+            
+        plt.tight_layout()
+        fig = plt.gcf()  # Get the current figure
+        fig.savefig('training_metrics.png')
+        plt.clf()
         
     def save_plot_torchmetrics(self, gathered_metrics:Dict):
         """
@@ -608,6 +628,7 @@ class TrainTestEval():
         for fold, (train_dataloader, val_dataloader) in enumerate(zip(cross_val_dataloaders['train'], cross_val_dataloaders['val'])):
             training_metrics_per_fold.append(self.training(train_dataloader, val_dataloader, save_metric_plot=False))
         return training_metrics_per_fold
+    
         
     def evaluation(self, test_dataloader:DataLoader) -> Tuple:
         """

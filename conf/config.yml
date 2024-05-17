@@ -1,6 +1,6 @@
 DATA_SPLITS:
-  train_test_ratio: 0.9
-  train_val_ratio: 0.9
+  train_test_ratio: 0.95
+  train_val_ratio: 0.90
 
 RANDOM_SEED: null
 
@@ -8,13 +8,13 @@ DATASET: CustomDfImageFolder
 
 DATA_LOADER:
   batch_size: 16
-  num_workers: 2
+  num_workers: 1
   pin_memory: True
 
 DATA_TRANSFORM_AND_AUGMENTATION:
   train:
     Resize: 
-        size: [224, 224]
+        size: [336, 336]
 #    RandAugment: 
 #        num_ops: 3
 #        magnitude: 10
@@ -22,9 +22,14 @@ DATA_TRANSFORM_AND_AUGMENTATION:
         num_magnitude_bins: 31
     ToTensor: {}
     Normalize: {}
+  val:
+    Resize: 
+        size: [336, 336]
+    ToTensor: {}
+    Normalize: {}
   test:
     Resize: 
-        size: [224, 224]
+        size: [336, 336]
     ToTensor: {}
     Normalize: {}
 
@@ -37,7 +42,7 @@ MODEL_PARAMS:
     ConfusionMatrix:
       task: multiclass
       num_classes: 4
-  activation_func: ReLU
+  activation_func: LeakyReLU
   optimizer: 
     Adam:
       lr: 0.001
@@ -45,13 +50,12 @@ MODEL_PARAMS:
     ReduceLROnPlateau:
       mode: min
       factor: 0.25
-      patience: 5
+      patience: 1
   early_stopping:
-    patience: 20
+    patience: 10
     delta: 0
     saving_option: model
     verbose: True
-
 
 
 

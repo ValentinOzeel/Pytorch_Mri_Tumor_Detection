@@ -2,7 +2,6 @@ import os
 import torch
 from typing import Dict, List, Tuple
 from torch.utils.data import Dataset, DataLoader
-from torchvision import datasets, transforms
 from torch.optim import lr_scheduler
 
 from torchinfo import summary
@@ -12,9 +11,6 @@ from timeit import default_timer as timer
 from data_loading import LoadOurData
 from secondary_module import ConfigLoad, colorize, check_cuda_availability
 from model import MRI_CNN, EarlyStopping, TrainTestEval, MetricsTracker
-
-
-
 
 
 class DeepLearningVisionWorkflow():
@@ -270,9 +266,9 @@ if __name__ == "__main__":
     # Dataset class used
     DatasetClass = config_load.get_dataset()
     # test_transform used for test_dataset (because we want to predict on real life data (only resized and transformed asd tensor))
-    train_transform_steps, test_transform_steps = config_load.get_transform_steps(dataset_type='train'), config_load.get_transform_steps(dataset_type='test')  
+    train_transform_steps, val_transform_steps, test_transform_steps = config_load.get_transform_steps(dataset_type='train'), config_load.get_transform_steps(dataset_type='val'), config_load.get_transform_steps(dataset_type='test')  
     # Create dict_transform_steps
-    dict_transform_steps = {'train':train_transform_steps, 'val':train_transform_steps, 'test':test_transform_steps}
+    dict_transform_steps = {'train':train_transform_steps, 'val':val_transform_steps, 'test':test_transform_steps}
     # Get train ratios
     train_ratio_presplit, train_ratio_split = config['DATA_SPLITS']['train_test_ratio'], config['DATA_SPLITS']['train_val_ratio']
     # Get dataloader params
