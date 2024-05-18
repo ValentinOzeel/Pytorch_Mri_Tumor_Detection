@@ -1,5 +1,5 @@
 DATA_SPLITS:
-  train_test_ratio: 0.95
+  train_test_ratio: 0.93
   train_val_ratio: 0.90
 
 RANDOM_SEED: null
@@ -8,13 +8,13 @@ DATASET: CustomDfImageFolder
 
 DATA_LOADER:
   batch_size: 16
-  num_workers: 1
+  num_workers: 2
   pin_memory: True
 
 DATA_TRANSFORM_AND_AUGMENTATION:
   train:
     Resize: 
-        size: [336, 336]
+        size: [256, 256]
 #    RandAugment: 
 #        num_ops: 3
 #        magnitude: 10
@@ -24,12 +24,12 @@ DATA_TRANSFORM_AND_AUGMENTATION:
     Normalize: {}
   val:
     Resize: 
-        size: [336, 336]
+        size: [256, 256]
     ToTensor: {}
     Normalize: {}
   test:
     Resize: 
-        size: [336, 336]
+        size: [256, 256]
     ToTensor: {}
     Normalize: {}
 
@@ -37,11 +37,6 @@ MODEL_PARAMS:
   hidden_units: 32
   epochs: 500
   loss_func: CrossEntropyLoss
-  metrics : [accuracy, precision, recall, f1]
-  torchmetrics:
-    ConfusionMatrix:
-      task: multiclass
-      num_classes: 4
   activation_func: LeakyReLU
   optimizer: 
     Adam:
@@ -52,12 +47,12 @@ MODEL_PARAMS:
       factor: 0.25
       patience: 1
   early_stopping:
-    patience: 10
+    patience: 15
     delta: 0
-    saving_option: model
+    saving_option: state_dict
     verbose: True
-
-
-
-
-
+  metrics : [accuracy, precision, recall, f1]
+  torchmetrics:
+    ConfusionMatrix:
+      task: multiclass
+      num_classes: 4

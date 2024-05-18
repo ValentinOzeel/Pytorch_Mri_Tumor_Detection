@@ -158,7 +158,7 @@ class EarlyStopping:
             raise ValueError("Incorrect save_dir_path to save checkpoint when calling early_stopping.")
         
         if self.saving_option not in ['model', 'state_dict', 'onnx']:
-            raise ValueError("EarlyStopping class' saving_option parameter should be either 'model', 'dict_state' or 'onnx'.")
+            raise ValueError("EarlyStopping class' saving_option parameter should be either 'model', 'state_dict' or 'onnx'.")
         
     def __call__(self, epoch, val_loss, model, input_data_onnx=None):
         """Return self.early_stop value: True or False. Potentially save checkpoints.
@@ -213,7 +213,7 @@ class EarlyStopping:
         
             if self.saving_option == 'model':
                 torch.save(model, os.path.join(self.save_dir_path, 'best_model_checkpoint.pth'))
-            elif self.saving_option == 'dict_state':
+            elif self.saving_option == 'state_dict':
                 torch.save(model.state_dict(), os.path.join(self.save_dir_path, 'best_model_state_checkpoint.pth'))
             else:
                 torch.onnx.export(model, input_data_onnx, os.path.join(self.save_dir_path, 'best_model_checkpoint.onnx'))
