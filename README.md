@@ -5,27 +5,27 @@ Pytorch workflow to train (+ evaluation and inference) a CCN to classify brain t
 Configuration can be found at conf/config.yml
 
 Classes and datasets:
-![Alt text](_for_readme\classes_and_datasets.png)
+![alt text](https://github.com/ValentinOzeel/Pytorch_Mri_Tumors_Classification/blob/main/_for_readme/classes_and_datasets.png)
 
 Model summary:
-![Alt text](_for_readme\model_summary.png)
+![alt text](https://github.com/ValentinOzeel/Pytorch_Mri_Tumors_Classification/blob/main/_for_readme/model_summary.png)
 
 Training metrics plotted in real time during training (Slightly raining loss inferior to val loss because validation dataset is not augmented)
-![Alt text](_for_readme\training_metrics.png)
+![alt text](https://github.com/ValentinOzeel/Pytorch_Mri_Tumors_Classification/blob/main/_for_readme/training_metrics.png)
 Confusion matrix
-![Alt text](_for_readme\ConfusionMatrix.png)
+![alt text](https://github.com/ValentinOzeel/Pytorch_Mri_Tumors_Classification/blob/main/_for_readme/ConfusionMatrix.png)
 
 Evaluation on test data (>98% accuracy)
-![Alt text](_for_readme\evaluation.png)
+![alt text](https://github.com/ValentinOzeel/Pytorch_Mri_Tumors_Classification/blob/main/_for_readme/evaluation.png)
 
 
 
 Here are the results when applying the same transform/augment as the training dataset to the val dataset:
 
 Training metrics plotted in real time during training
-![Alt text](_for_readme\_with_val_augment\training_metrics.png)
+![alt text](https://github.com/ValentinOzeel/Pytorch_Mri_Tumors_Classification/blob/main/_for_readme/_with_val_augment/training_metrics.png)
 Confusion matrix
-![Alt text](_for_readme\_with_val_augment\ConfusionMatrix.png)
+![alt text](https://github.com/ValentinOzeel/Pytorch_Mri_Tumors_Classification/blob/main/_for_readme/_with_val_augment/ConfusionMatrix.png)
 
-Evaluation on test data (>98% accuracy)
-![Alt text](_for_readme\_with_val_augment\evaluation.png)
+Evaluation on test data (>96.5% accuracy)
+![alt text](https://github.com/ValentinOzeel/Pytorch_Mri_Tumors_Classification/blob/main/_for_readme/_with_val_augment/evaluation.png)
