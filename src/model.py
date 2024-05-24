@@ -8,6 +8,9 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
+import gzip
+import shutil
+
 from secondary_module import colorize, project_root_path
 
 import matplotlib.pyplot as plt
@@ -127,23 +130,26 @@ class EarlyStopping:
     Args:
         patience (int): How long to wait after last time validation loss improved. Default: 7
         delta (float): Minimum change in the monitored quantity to qualify as an improvement. Default: 0
+        project_root (str): Path of the project root
         save_checkpoint (bool): Whether to save the checkpoint or not. Default: True
         saving_option (str): Option for saving checkpoint ('model', 'state_dict', 'onnx'). Default: 'model'
-        save_dir_path (str): Path to save checkpoint. Default: project_root_path
+        save_dir_path (str): Path relative to the root to save checkpoint. Default: project_root_path
+        compress (bool): Compress the model with gzip and shutil
         trace_func (function): Function to use for printing. Default: print
         verbose (bool): If True, prints a message for each validation loss improvement. Default: False
     """
 
     def __init__(self, 
                  patience=7, delta=0, 
-                 save_checkpoint=True, saving_option='model', save_dir_path=project_root_path, 
+                 project_root=project_root_path, save_checkpoint=True, saving_option='model', save_dir_path='', compress=False,
                  trace_func=print, verbose=False):
 
         self.patience = patience
         self.delta = delta
         self.save_checkpoint = save_checkpoint
         self.saving_option = saving_option.lower()
-        self.save_dir_path = save_dir_path
+        self.save_dir_path = os.path.join(project_root, save_dir_path)
+        self.compress = compress
         self.verbose = verbose
         self.trace_func = trace_func
         
@@ -212,14 +218,26 @@ class EarlyStopping:
                 raise ValueError("kwargs[0]/input_data_onnx parameter should be assigned when calling early_stopping while using saving_option = 'onnx'.")
         
             if self.saving_option == 'model':
-                torch.save(model, os.path.join(self.save_dir_path, 'best_model_checkpoint.pth'))
+                save_path = os.path.join(self.save_dir_path, 'best_model_checkpoint.pt')
+                torch.save(model, save_path)
+                if self.compress: self.__compress(save_path)
             elif self.saving_option == 'state_dict':
-                torch.save(model.state_dict(), os.path.join(self.save_dir_path, 'best_model_state_checkpoint.pth'))
-            else:
-                torch.onnx.export(model, input_data_onnx, os.path.join(self.save_dir_path, 'best_model_checkpoint.onnx'))
-            
+                save_path = os.path.join(self.save_dir_path, 'best_model_state_checkpoint.pt')
+                torch.save(model.state_dict(), save_path)
+                if self.compress: self.__compress(save_path)
+            elif self.saving_option == 'onnx':
+                save_path = os.path.join(self.save_dir_path, 'best_model_checkpoint.onnx')
+                torch.onnx.export(model, input_data_onnx, save_path)
+                if self.compress: self.__compress(save_path)
 
+    def __compress(self, model_path):
+        # Compress the model file
+        with open(model_path, 'rb') as f_in:
+            with gzip.open(f'{model_path}.gz', 'wb') as f_out:
+                shutil.copyfileobj(f_in, f_out)
 
+        # remove the original model file to save space
+        os.remove(model_path)
 
 class MetricsTracker:
     def __init__(self, metrics:List[str], n_classes:int, average:str='macro', torchmetrics:Dict={}):

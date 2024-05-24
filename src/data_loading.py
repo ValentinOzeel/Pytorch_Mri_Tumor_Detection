@@ -174,7 +174,7 @@ class LoadOurData():
         # Calculate the mean and std across the entire dataset
         self.mean /= total_samples
         self.std /= total_samples
-        #print('mean =', self.mean, ' ||| ' 'std =', self.std )
+        print('Normalization calculation results: ', 'mean =', self.mean, ' ||| ' 'std =', self.std )
         return {'mean':self.mean, 'std':self.std}
 
 

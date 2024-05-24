@@ -1,11 +1,13 @@
 import os 
 import yaml
-from typing import List, Dict
+from typing import List 
+
 import torch
 from torchvision import datasets, transforms
-
 import torchmetrics
 
+import gzip
+import shutil
 from colorama import init, Fore, Back, Style
 init() # Initialize Colorama to work on Windows
 
@@ -65,3 +67,12 @@ def check_cuda_availability():
     
 def colorize(to_print, color):
     return f"{getattr(Fore, color) + to_print + Style.RESET_ALL}"
+
+
+def decompress_model(model_path:str):
+    output_path = model_path.replace('.gz', '') if '.gz' in model_path else model_path
+                                              
+    # Decompress the model file
+    with gzip.open(model_path, 'rb') as f_in:
+        with open(output_path, 'wb') as f_out:
+            shutil.copyfileobj(f_in, f_out)

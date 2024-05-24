@@ -1,4 +1,11 @@
 ##########################
+
+fastapi_serving.py
+test_api.py 
+deploy_config.yml
+results/
+
+
 # Common files
 
 

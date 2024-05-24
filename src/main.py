@@ -4,7 +4,7 @@ import torch
 from torch.optim import lr_scheduler
 from torchinfo import summary
 
-from secondary_module import ConfigLoad, check_cuda_availability
+from secondary_module import project_root_path, ConfigLoad, check_cuda_availability
 from model import EarlyStopping
 from workflow_class import DeepLearningVisionWorkflow
 
@@ -13,7 +13,6 @@ if __name__ == "__main__":
     # Get data path
     # _______________
     # Assuming data_exploration.py is in src\main.py
-    project_root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     data_dir_path = os.path.join(project_root_path, 'data')
 
     # Setup device-agnostic device

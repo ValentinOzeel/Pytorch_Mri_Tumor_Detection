@@ -49,7 +49,10 @@ MODEL_PARAMS:
   early_stopping:
     patience: 15
     delta: 0
-    saving_option: state_dict
+    save_checkpoint: True
+    saving_option: state_dict # model, state_dict, onnx
+    save_dir_path: results/model
+    compress: True
     verbose: True
   metrics : [accuracy, precision, recall, f1]
   torchmetrics:

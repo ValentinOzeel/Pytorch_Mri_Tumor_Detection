@@ -21,7 +21,7 @@ class DataPrep():
     - random_seed (int, optional): Seed for random number generation to ensure reproducibility. Default is None.
     
     Attributes:
-    - all_img_paths_in_root (List[Path]): List of all image paths in the root directory.
+    - all_img_paths_in_root (List[Path]): List of all image paths (jpg, png) in the root directory.
     - random_seed (int): Seed for random number generation to ensure reproducibility.
     - original_df (pd.DataFrame): DataFrame containing the paths and class labels of the original dataset.
     - train_df (pd.DataFrame): DataFrame containing the training data after splitting.
@@ -32,8 +32,8 @@ class DataPrep():
     def __init__(self, root:str, random_seed:int=None):
         
         if not os.path.exists(root): raise FileNotFoundError(f"The root path is not valid: {root}")
-        # List all Path of .jpg images in root dir (expect following path format: root/class/image.jpg)
-        self.all_img_paths_in_root = list(Path(root).glob("*/*.jpg"))
+        # List all Path of .jpg and .png images in root dir (expect following path format: root/class/image.jpg)
+        self.all_img_paths_in_root = list(Path(root).glob("*/*.jpg")) + list(Path(root).glob("*/*.png"))
         
         self.random_seed = random_seed
         

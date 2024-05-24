@@ -8,3 +8,5 @@ torchmetrics
 tqdm
 matplotlib
 scikit-learn
+gzip
+shutil
