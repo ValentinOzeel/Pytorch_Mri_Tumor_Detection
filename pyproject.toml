@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "Pytorch_Mri_Tumors_Classification"
+version = "0.1.0"
+description = "Classification of tumors based on MRI using ConvNet."
+authors = ["Valentin Ozeel <your.email@example.com>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/ValentinOzeel/Pytorch_Mri_Tumors_Classification"
+
+
+[tool.poetry.dependencies]
+python = "^3.10"
+# Add the dependency on the GitHub repository
+pytorch_vision_workflow = { git = "https://github.com/ValentinOzeel/pytorch_vision_workflow.git" }
+
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.dev-dependencies]
+pytest = "^6.2.4"
+flake8 = "^3.9.2"
+black = "^21.5b1"

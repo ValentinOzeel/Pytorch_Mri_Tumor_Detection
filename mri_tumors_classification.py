@@ -4,17 +4,18 @@ import torch
 from torch.optim import lr_scheduler
 from torchinfo import summary
 
-from secondary_module import project_root_path, ConfigLoad, check_cuda_availability
-from model import EarlyStopping
-from workflow_class import DeepLearningVisionWorkflow
+from pytorch_vision_workflow.secondary_module import ConfigLoad, check_cuda_availability
+from pytorch_vision_workflow.model import EarlyStopping
+from pytorch_vision_workflow.workflow_class import DeepLearningVisionWorkflow
 
 
 if __name__ == "__main__":
     # Get data path
     # _______________
-    # Assuming data_exploration.py is in src\main.py
-    data_dir_path = os.path.join(project_root_path, 'data')
-
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__)))
+    data_dir_path = os.path.join(project_root, 'data')
+    config_path = os.path.join(project_root, 'conf', 'config.yml')
+    
     # Setup device-agnostic device
     check_cuda_availability()
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -23,7 +24,7 @@ if __name__ == "__main__":
     ###########                 ###########
     ########### GET CONFIG DATA ###########
     ###########                 ###########
-    config_load = ConfigLoad()
+    config_load = ConfigLoad(path=config_path)
     config = config_load.get_config()
     
     random_seed = config['RANDOM_SEED']
@@ -59,7 +60,7 @@ if __name__ == "__main__":
     lr_scheduler_obj = getattr(lr_scheduler, lr_schd_name)
     # Early stopping
     if config['MODEL_PARAMS'].get('early_stopping'):
-        early_stopping = EarlyStopping(**config['MODEL_PARAMS']['early_stopping'])
+        early_stopping = EarlyStopping(project_root=project_root, **config['MODEL_PARAMS']['early_stopping'])
 
 
 
