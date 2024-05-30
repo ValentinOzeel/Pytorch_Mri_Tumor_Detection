@@ -1109,7 +1109,7 @@ tqdm = "^4.66"
 type = "git"
 url = "https://github.com/ValentinOzeel/pytorch_vision_workflow.git"
 reference = "HEAD"
-resolved_reference = "248029a3da5b28c6f94fe38d3c29257d97958bd2"
+resolved_reference = "b210a46b88977aa957ba2f3a7bc079bb86d85e42"
 
 [[package]]
 name = "pyyaml"

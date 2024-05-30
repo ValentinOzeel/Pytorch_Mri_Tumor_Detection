@@ -65,7 +65,7 @@ if __name__ == "__main__":
 
 
     # Initiate Main class
-    dl = DeepLearningVisionWorkflow(data_dir_path, DatasetClass, device=device, random_seed=random_seed)
+    dl = DeepLearningVisionWorkflow(DatasetClass, data_dir_path=data_dir_path, device=device, random_seed=random_seed)
     # Presplit original dataset into train and test dfs 
     dl.train_test_presplit(train_ratio=train_ratio_presplit)
     
